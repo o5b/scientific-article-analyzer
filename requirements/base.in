@@ -1,0 +1,14 @@
+django
+djangorestframework
+celery
+redis
+requests
+django-celery-results
+django-celery-beat
+channels
+channels-redis
+daphne
+psycopg2-binary
+django-admin-sortable2
+openai
+python-dotenv

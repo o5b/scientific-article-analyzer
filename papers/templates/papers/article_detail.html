@@ -1,0 +1,1942 @@
+{% extends "base.html" %}
+{% load papers_extras %}
+{% load static %}
+
+
+{% block title %}{{ article.title|truncatechars:60 }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .detail-section { margin-bottom: 25px; padding-bottom: 15px; border-bottom: 1px solid #eee; }
+    .detail-section h3 { margin-top: 0; color: #555; }
+    .metadata-grid { display: grid; grid-template-columns: 150px 1fr; gap: 5px 15px; }
+    .metadata-grid dt { font-weight: bold; color: #333; }
+    .metadata-grid dd { margin-left: 0; }
+    .content-list li, .reference-list li {
+        background-color: #f9f9f9; padding: 10px; margin-bottom: 8px; border-radius: 3px;
+        border-left: 3px solid #17a2b8;
+    }
+    .reference-list li .status { font-size: 0.85em; color: #666; display: block; margin-top: 5px; }
+    .actions button { margin-right: 10px; margin-top: 5px; background-color: #17a2b8; font-size:0.9em; padding: 8px 12px;}
+    .actions button:hover { background-color: #138496; }
+    .raw-content-toggle { cursor: pointer; color: #138496; text-decoration: underline; font-size: 0.9em; }
+    .raw-content-data { display: none; white-space: pre-wrap; background-color: #272822; color: #f8f8f2; padding: 10px; border-radius: 4px; margin-top: 5px; max-height: 300px; overflow-y: auto; font-family: monospace; }
+
+    /* Стили для "липкого" блока уведомлений */
+    #notifications-wrapper { /* Новый внешний контейнер для уведомлений */
+        position: -webkit-sticky; /* Safari */
+        position: sticky;
+        top: 0; /* Прилипнет к верху viewport, когда прокрутка дойдет до него */
+        z-index: 1020; /* Должен быть выше другого контента в .container */
+        background-color: #f8f9fa; /* Фон, чтобы текст не накладывался */
+        padding: 0; /* Уберем внутренние отступы у wrapper */
+         /* Растягиваем на всю ширину .container, учитывая его padding */
+        margin-left: -20px;
+        margin-right: -20px;
+        margin-bottom: 20px; /* Отступ снизу до основного контента */
+        border-bottom: 1px solid #dee2e6;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    #notifications { /* Сам блок для сообщений */
+        padding: 10px 20px; /* Внутренние отступы для сообщений */
+        max-height: 150px; /* Ограничение высоты, если много сообщений */
+        overflow-y: auto; /* Прокрутка, если сообщений больше */
+    }
+
+    /* ... стили для редактирования частей статьи ... */
+    .section-editor { margin-bottom: 15px; padding: 10px; border: 1px solid #f0f0f0; background-color: #fdfdfd; }
+    .section-editor textarea { width: calc(100% - 22px); min-height: 150px; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; }
+    .section-display { padding: 5px 0; }
+    .edit-section-btn, .save-section-btn, .cancel-section-btn {
+        font-size: 0.8em; padding: 4px 8px; margin-left: 10px; cursor: pointer;
+    }
+    .save-section-btn { background-color: #5cb85c; color: white; }
+    .cancel-section-btn { background-color: #aaa; color: white; }
+
+    .add-section-btn {
+        display: block;
+        margin: 20px 0;
+        padding: 10px 15px;
+        background-color: #17a2b8; /* Info color */
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        text-align: center;
+    }
+    .add-section-btn:hover { background-color: #138496; }
+
+    /* стили для анализируемых участков текста */
+    /*
+    #createSegmentBtn {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 10px 15px;
+        background-color: #28a745; /* Зеленый */
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        display: none; /* Изначально скрыта */
+        z-index: 1030;
+    }
+    #createSegmentBtn:hover { background-color: #218838; }
+
+    .analyzed-segment-item {
+        border: 1px solid #007bff;
+        background-color: #e7f3ff;
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 4px;
+    }
+    .analyzed-segment-item blockquote {
+        margin: 5px 0 10px 20px;
+        padding: 5px 10px;
+        background-color: #fff;
+        border-left: 3px solid #0056b3;
+        font-style: italic;
+    }
+    .analyzed-segment-item .segment-refs li { font-size: 0.9em; }
+    */
+
+    /* стили для анализируемых участков текста */
+    .analyzed-segments-wrapper { margin-top: 25px; }
+    .segment-section-group { margin-bottom: 20px; }
+    .segment-section-group h4 {
+        background-color: #f0f2f5;
+        padding: 8px 12px;
+        border-radius: 4px;
+        border-bottom: 2px solid #e0e2e5;
+    }
+    .analyzed-segment-item {
+        border: 1px solid #d1e7fd;
+        background-color: #f8f9fa;
+        padding: 15px;
+        margin-bottom: 15px;
+        border-radius: 4px;
+        position: relative; /* Для позиционирования кнопок */
+    }
+    .analyzed-segment-item p { margin-top: 0; line-height: 1.6; }
+    .segment-references-list {
+        list-style-type: none;
+        padding-left: 15px;
+        margin-top: 10px;
+        font-size: 0.9em;
+        border-top: 1px dashed #ccc;
+        padding-top: 10px;
+    }
+    .segment-references-list li { margin-bottom: 5px; }
+</style>
+{% endblock %}
+
+{% block content %}
+{# *** Блок уведомлений теперь ВНАЧАЛЕ .container *** #}
+<div id="notifications-wrapper">
+    <div id="notifications">
+        {# Сообщения будут добавляться сюда JavaScript'ом #}
+        <p style="text-align: center; color: #6c757d; margin: 5px 0;">Ожидание уведомлений...</p>
+    </div>
+</div>
+
+{# *** НАЧАЛО: Добавление фиктивной формы с CSRF-токеном *** #}
+<form style="display:none;">
+    {% csrf_token %}
+</form>
+{# *** КОНЕЦ: Добавление фиктивной формы с CSRF-токеном *** #}
+
+{{ references_for_js|json_script:"article-references-data-script" }}
+
+<h2>{{ article.title|default:"(Заголовок не определен)" }}</h2>
+
+<div class="actions" style="margin-bottom:20px;">
+    {# <button onclick="reprocessArticle({{ article.id }}, this)">Повторно обработать статью</button> #}
+    <button onclick="deleteArticle({{ article.id }}, this)" style="background-color:#d9534f;">Удалить статью</button>
+</div>
+
+{# === КНОПКА СОЗДАНИЯ СЕГМЕНТА (появляется при выделении текста) === #}
+<button type="button" id="createSegmentBtn">Создать сегмент из выделенного</button>
+
+{# === НОВЫЙ БЛОК ДЛЯ ОТОБРАЖЕНИЯ СЕГМЕНТОВ === #}
+<div class="detail-section analyzed-segments-wrapper">
+    <h3>Автоматически связанные сегменты текста</h3>
+    {% if analyzed_segments %}
+        {# Группируем сегменты по названию секции #}
+        {% regroup analyzed_segments by section_key as segments_by_section %}
+
+        {% for section in segments_by_section %}
+            <div class="segment-section-group">
+                <h4>Секция: {{ section.grouper|default:"(Без секции)" }}</h4>
+                {% for segment in section.list %}
+                    <div class="analyzed-segment-item" id="segment-{{ segment.pk }}">
+                        {# Текст сегмента (абзаца) #}
+                        <p>{{ segment.segment_text|linebreaksbr }}</p>
+
+                        {# Отображение связанных ссылок #}
+                        {% if segment.cited_references.all %}
+                            <strong>Связанные источники:</strong>
+                            <ul class="segment-references-list">
+                            {% comment %} {% for ref_link in segment.cited_references.all %} {% endcomment %}
+                            {% for ref_link in segment.cited_references.all|dictsort:"manual_data_json.jats_ref_id" %}
+                                <li>
+                                    <span style="font-weight: bold; color: #0056b3;">
+                                        {% if ref_link.manual_data_json.jats_ref_id %}[{{ ref_link.manual_data_json.jats_ref_id }}]{% endif %}
+                                    </span>
+                                    {% if ref_link.resolved_article %}
+                                        <a href="{% url 'article_detail' ref_link.resolved_article.pk %}" title="{{ ref_link.resolved_article.title }}">{{ ref_link.resolved_article.title|truncatechars:80 }}</a>
+                                    {% elif ref_link.manual_data_json.title %}
+                                        {{ ref_link.manual_data_json.title|truncatechars:80 }}
+                                    {% else %}
+                                        {{ ref_link.raw_reference_text|truncatechars:80 }}
+                                    {% endif %}
+                                    {% if ref_link.target_article_doi %}<small> (DOI: {{ ref_link.target_article_doi }})</small>{% endif %}
+                                </li>
+                            {% endfor %}
+                            </ul>
+                        {% else %}
+                             <p><small><i>В этом сегменте не найдено связанных ссылок.</i></small></p>
+                        {% endif %}
+
+                        <div id="llm-analysis-results-{{ segment.pk }}" style="margin-top: 10px; padding: 8px; background-color: #f0f8ff; border-radius: 3px;">
+                            <strong>LLM Анализ:</strong>
+                            {% if segment.llm_analysis_notes %}
+                                <p><i>Заметки:</i> {{ segment.llm_analysis_notes|linebreaksbr }}</p>
+                                <p><i>Оценка достоверности (1-5):</i> {{ segment.llm_veracity_score|default:"не оценено" }}</p>
+                                <p><small>Модель: {{ segment.llm_model_name|default:"не указана" }} ({{ segment.updated_at|date:"d.m.Y H:i" }})</small></p>
+                            {% else %}
+                                <p>Анализ еще не проводился или в процессе.</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="actions" style="margin-top: 10px;">
+                             <button class="llm-analyze-segment-btn" data-segment-id="{{ segment.pk }}">Анализировать с LLM</button>
+                             <button disabled title="Действие пока не реализовано">Редактировать</button>
+                             <button disabled title="Действие пока не реализовано" style="background-color:#d9534f; color:white;">Удалить</button>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>Для этой статьи еще не создано анализируемых сегментов. Если вы загрузили полный текст в XML-формате, задача по их созданию может быть еще в очереди на выполнение.</p>
+    {% endif %}
+</div>
+
+{% comment %} {# === Отображение существующих анализируемых сегментов === #}
+<div class="detail-section analyzed-segments-display">
+    <h3>Анализируемые сегменты текста</h3>
+    {% if analyzed_segments %}
+        {% for segment in analyzed_segments %}
+             <div class="analyzed-segment-item" id="segment-{{ segment.pk }}">
+                <p><strong>Секция:</strong> {{ segment.section_key|default:"Общий текст" }}</p>
+                <blockquote>{{ segment.segment_text|linebreaksbr }}</blockquote>
+                {% if segment.inline_citation_markers %}
+                    <p><small>Маркеры цитат: {{ segment.inline_citation_markers|join:", " }}</small></p>
+                {% endif %}
+                {% if segment.cited_references.all %}
+                    <strong>Связанные ссылки:</strong>
+                    <ul class="segment-refs">
+                    {% for ref_link in segment.cited_references.all %}
+                        <li>
+                            {% if ref_link.resolved_article %}
+                                <a href="{% url 'article_detail' ref_link.resolved_article.pk %}">{{ ref_link.resolved_article.title|truncatechars:70 }}</a>
+                            {% elif ref_link.target_article_doi %}
+                                DOI: {{ ref_link.target_article_doi }}
+                            {% elif ref_link.manual_data_json.title %}
+                                {{ ref_link.manual_data_json.title|truncatechars:70 }}
+                            {% else %}
+                                {{ ref_link.raw_reference_text|truncatechars:70 }}
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+                    </ul>
+                {% endif %}
+
+                <div id="llm-analysis-results-{{ segment.pk }}" style="margin-top: 10px; padding: 8px; background-color: #f0f8ff; border-radius: 3px;">
+                    <strong>LLM Анализ:</strong>
+                    {% if segment.llm_analysis_notes %}
+                        <p><i>Заметки:</i> {{ segment.llm_analysis_notes|linebreaksbr }}</p>
+                        <p><i>Оценка достоверности (1-5):</i> {{ segment.llm_veracity_score|default:"не оценено" }}</p>
+                        <p><small>Модель: {{ segment.llm_model_name|default:"не указана" }} ({{ segment.updated_at|date:"d.m.Y H:i" }})</small></p>
+                    {% else %}
+                        <p>Анализ еще не проводился или в процессе.</p>
+                    {% endif %}
+                </div>
+
+                <div class="actions">
+                    <button class="llm-analyze-segment-btn" data-segment-id="{{ segment.pk }}">Анализировать с LLM</button>
+                    <button disabled title="Редактирование сегмента пока не реализовано">Редактировать сегмент</button>
+                    <button disabled title="Удаление сегмента пока не реализовано">Удалить сегмент</button>
+                </div>
+            </div>
+        {% empty %}
+            <p>Для этой статьи еще нет проанализированных сегментов.</p>
+        {% endfor %}
+    {% else %}
+        <p>Для этой статьи еще нет проанализированных сегментов.</p>
+    {% endif %}
+</div> {% endcomment %}
+
+<div class="detail-section structured-text-editor">
+    <h3>Содержимое статьи по секциям (редактируемое)</h3>
+    {% with standard_sections="title,abstract,introduction,methods,results,discussion,conclusion"|split:"," %}
+        {% for section_key in standard_sections %}
+            <div class="section-editor" id="section-{{ section_key }}">
+                <h4>
+                    {{ section_key|capfirst }}
+                    <button type="button" class="edit-section-btn" data-section="{{ section_key }}">Редактировать</button>
+                </h4>
+                <div class="section-display" id="display-{{ section_key }}">
+                    {{ article.structured_content|json_script:"initial-structured-content-data" }}
+                </div>
+                <div class="section-form" id="form-{{ section_key }}" style="display:none;">
+                    <textarea id="textarea-{{ section_key }}">{{ article.structured_content|get_item:section_key|default:"" }}</textarea>
+                    <button type="button" class="save-section-btn" data-section="{{ section_key }}">Сохранить</button>
+                    <button type="button" class="cancel-section-btn" data-section="{{ section_key }}">Отмена</button>
+                </div>
+            </div>
+        {% endfor %}
+    {% endwith %}
+
+    <button type="button" class="add-section-btn" id="openAddSectionModalBtn">Добавить свою секцию</button>
+
+    {% comment %} {% if article.structured_content.other_sections %}
+        <h4>Другие секции:</h4>
+        {% for other_sec in article.structured_content.other_sections %}
+            <div class="section-editor"> {# Можно будет добавить редактирование и для этих секций позже #}
+                <h5>{{ other_sec.title|default:"Без заголовка" }}</h5>
+                <div class="section-display">
+                    {{ other_sec.text|default:"(Текст отсутствует)"|linebreaksbr }}
+                </div>
+            </div>
+        {% endfor %}
+    {% endif %} {% endcomment %}
+
+
+    {% if article.structured_content.other_sections %}
+        <h4>Другие секции:</h4>
+        {% for other_sec in article.structured_content.other_sections %}
+            {# Добавляем ID к обертке секции для легкого удаления из DOM #}
+            <div class="section-editor" id="custom-section-{{ forloop.counter0 }}">
+                <h5>{{ other_sec.title|default:"Без заголовка" }}</h5>
+                <div class="section-display">
+                    {{ other_sec.text|default:"(Текст отсутствует)"|linebreaksbr }}
+                </div>
+                {# Здесь можно будет добавить и кнопку "Редактировать" для этих секций позже #}
+                <button type="button" class="delete-custom-section-btn"
+                        data-section-index="{{ forloop.counter0 }}"
+                        data-section-title="{{ other_sec.title|default_if_none:''|escapejs }}"
+                        style="background-color:#d9534f; color:white; font-size:0.8em; padding:3px 6px; margin-top:5px;">
+                    Удалить эту секцию
+                </button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    {% if article.structured_content.full_body_fallback and not article.structured_content.introduction %} {# Показываем fallback, если нет основных секций #}
+         <h4>Основной текст (без явных разделов):</h4>
+         <div class="section-editor">
+             <p>{{ article.structured_content.full_body_fallback|linebreaksbr }}</p>
+             {# Здесь тоже можно добавить редактирование #}
+         </div>
+    {% endif %}
+</div>
+
+
+<div class="detail-section metadata"> ... </div>
+{% if article.abstract and not article.structured_content.abstract %} {# Показываем, если нет в структуре #}
+<div class="detail-section abstract"><h3>Аннотация (из метаданных)</h3><p>{{ article.abstract|linebreaksbr }}</p></div>
+{% endif %}
+<div class="detail-section oa-info"> ... </div>
+{% if article.cleaned_text_for_llm %}
+<div class="detail-section full-text"><h3>Сводный очищенный текст (для LLM)</h3> ... </div>
+{% endif %}
+{% if contents %} <div class="detail-section raw-contents"> ... </div> {% endif %}
+{% if references_made %} <div class="detail-section references"> ... </div> {% endif %}
+<div id="notifications-wrapper"> <div id="notifications"> ... </div> </div>
+
+
+<div class="detail-section metadata">
+    <h3>Основная информация</h3>
+    <dl class="metadata-grid">
+        <dt>Авторы:</dt>
+        <dd>
+            {% for author_order in article.articleauthororder_set.all %}
+                {{ author_order.author.full_name }}{% if not forloop.last %}; {% endif %}
+            {% empty %}
+                Не указаны
+            {% endfor %}
+        </dd>
+        <dt>DOI:</dt><dd>{{ article.doi|default:"-" }}</dd>
+        <dt>PMID:</dt><dd>{{ article.pubmed_id|default:"-" }}</dd>
+        <dt>arXiv ID:</dt><dd>{{ article.arxiv_id|default:"-" }}</dd>
+        <dt>Дата публикации:</dt><dd>{{ article.publication_date|date:"d.m.Y"|default:"-" }}</dd>
+        <dt>Журнал/Источник:</dt><dd>{{ article.journal_name|default:"-" }}</dd>
+        <dt>Источник осн. данных:</dt><dd>{{ article.primary_source_api|upper|default:"-" }}</dd>
+    </dl>
+</div>
+
+{% if article.abstract %}
+<div class="detail-section abstract">
+    <h3>Аннотация</h3>
+    <p>{{ article.abstract|linebreaksbr }}</p>
+</div>
+{% endif %}
+
+<div class="detail-section oa-info">
+    <h3>Информация Open Access (Unpaywall)</h3>
+    <dl class="metadata-grid">
+        <dt>Статус OA:</dt><dd>{{ article.oa_status|default:"Неизвестно" }}</dd>
+        <dt>Лицензия OA:</dt><dd>{{ article.oa_license|default:"-" }}</dd>
+        {% if article.best_oa_pdf_url %}
+            <dt>PDF OA:</dt><dd><a href="{{ article.best_oa_pdf_url }}" target="_blank" rel="noopener noreferrer">{{ article.best_oa_pdf_url }}</a></dd>
+        {% elif article.best_oa_url %}
+            <dt>Ссылка OA:</dt><dd><a href="{{ article.best_oa_url }}" target="_blank" rel="noopener noreferrer">{{ article.best_oa_url }}</a></dd>
+        {% endif %}
+    </dl>
+</div>
+
+{% if article.structured_content %}
+<div class="detail-section structured-text">
+    <h3>Структурированное содержимое статьи</h3>
+    {% if article.structured_content.title %}
+        <h4>{{ article.structured_content.title }}</h4>
+    {% endif %}
+    {% if article.structured_content.abstract %}
+        <div class="content-section"><h5>Аннотация</h5><p>{{ article.structured_content.abstract|linebreaksbr }}</p></div>
+    {% endif %}
+    {% if article.structured_content.introduction %}
+        <div class="content-section"><h5>Введение</h5><p>{{ article.structured_content.introduction|linebreaksbr }}</p></div>
+    {% endif %}
+    {% if article.structured_content.methods %}
+        <div class="content-section"><h5>Методы</h5><p>{{ article.structured_content.methods|linebreaksbr }}</p></div>
+    {% endif %}
+    {% if article.structured_content.results %}
+        <div class="content-section"><h5>Результаты</h5><p>{{ article.structured_content.results|linebreaksbr }}</p></div>
+    {% endif %}
+    {% if article.structured_content.discussion %}
+        <div class="content-section"><h5>Обсуждение</h5><p>{{ article.structured_content.discussion|linebreaksbr }}</p></div>
+    {% endif %}
+    {% if article.structured_content.conclusion %}
+        <div class="content-section"><h5>Заключение</h5><p>{{ article.structured_content.conclusion|linebreaksbr }}</p></div>
+    {% endif %}
+    {% if article.structured_content.other_sections %}
+        {% for sec in article.structured_content.other_sections %}
+            <div class="content-section"><h5>{{ sec.title|default:"Дополнительная секция" }}</h5><p>{{ sec.text|linebreaksbr }}</p></div>
+        {% endfor %}
+    {% endif %}
+    {% if not article.structured_content.introduction and not article.structured_content.methods and article.structured_content.full_body_fallback %}
+         <div class="content-section"><h5>Основной текст (без разделов)</h5><p>{{ article.structured_content.full_body_fallback|linebreaksbr }}</p></div>
+    {% endif %}
+</div>
+{% elif article.cleaned_text_for_llm %} {# Если структурированного нет, показываем старый cleaned_text_for_llm #}
+<div class="detail-section full-text">
+    <h3>Очищенный текст (для LLM)</h3>
+    <div style="max-height: 300px; overflow-y: auto; border: 1px solid #eee; padding: 10px; white-space: pre-wrap; background: #fdfdfd;">
+        {{ article.cleaned_text_for_llm|linebreaksbr }}
+    </div>
+</div>
+{% endif %}
+
+{% if contents %}
+<div class="detail-section raw-contents">
+    <h3>Доступный контент и сырые данные</h3>
+    <ul class="content-list" style="padding-left:0; list-style:none;">
+        {% for content_item in contents %}
+        <li>
+            <strong>{{ content_item.source_api_name|upper }}</strong> - {{ content_item.format_type }}
+            <small>(Загружено: {{ content_item.retrieved_at|date:"d.m.Y H:i" }})</small>
+            {% if content_item.format_type == "json_metadata" or content_item.format_type == "json_oadata" or content_item.format_type == "xml_jats_fulltext" %}
+                <br><span class="raw-content-toggle" onclick="toggleRawContent(this, 'content-{{ content_item.id }}')">Показать/скрыть данные</span>
+                <div id="content-{{ content_item.id }}" class="raw-content-data">{% autoescape off %}{{ content_item.content }}{% endautoescape %}</div>
+            {% elif content_item.format_type == "link_openaccess_pdf" %}
+                 <br><a href="{{ content_item.content }}" target="_blank" rel="noopener noreferrer">Ссылка на PDF</a>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{% if references_made %}
+<div class="detail-section references">
+    <h3>Список литературы ({{ references_made|length }} ссылок)</h3>
+    <div class="actions">
+        <button onclick="findAllReferenceDois({{ article.id }}, this)">Найти DOI для всех ненайденных</button>
+        <button onclick="loadAllLinkedReferences({{ article.id }}, this)">Загрузить все с DOI</button>
+        <button type="button" class="add-section-btn" onclick="openAddReferenceModal()">Добавить ссылку вручную</button>
+    </div>
+    <ul class="reference-list" style="padding-left:0; list-style:none;">
+        {% for ref in references_made %}
+        <li>
+            <p>
+                {% if ref.manual_data_json.title %}
+                    Ссылка #{{ forloop.counter }}: <strong>{{ ref.manual_data_json.title }}</strong><br>
+                {% endif %}
+                {% if ref.raw_reference_text %}
+                    {{ ref.raw_reference_text|truncatechars:200 }}<br>
+                {% endif %}
+                {% if ref.manual_data_json.year %}(Год: {{ ref.manual_data_json.year }}){% endif %}
+            </p>
+            <p>
+                <strong>Целевой DOI:</strong> {{ ref.target_article_doi|default:"Не найден" }} <br>
+                {% if ref.resolved_article %}
+                    <strong>Статус в БД:</strong> Связана со статьей <a href="{% url 'article_detail' ref.resolved_article.pk %}">"{{ ref.resolved_article.title|truncatechars:50 }}"</a>
+                {% else %}
+                    <strong>Статус в БД:</strong> Не связана с локальной статьей
+                {% endif %}
+            </p>
+            <span class="status">Статус обработки ссылки: {{ ref.get_status_display }}</span>
+            <div class="actions">
+                {% if not ref.target_article_doi and ref.status != "doi_lookup_in_progress" %} {# Не показывать кнопку, если уже в поиске #}
+                    <button onclick="findDoiForReference({{ ref.id }}, this)">Найти DOI</button>
+                {% elif ref.status == "doi_lookup_in_progress" %}
+                     <button disabled>Поиск DOI...</button>
+                {% else %}
+                    <button disabled title="DOI уже найден или указан">Найти DOI</button>
+                {% endif %}
+
+                {% if ref.target_article_doi and not ref.resolved_article and ref.status != "article_fetch_in_progress" %}
+                    <button onclick="loadReferencedArticle({{ ref.id }}, this)">Загрузить по DOI</button>
+                {% elif ref.status == "article_fetch_in_progress" %}
+                    <button disabled>Загрузка статьи...</button>
+                {% else %}
+                    <button disabled title="Нет DOI или статья уже загружена/связана">Загрузить по DOI</button>
+                {% endif %}
+                <button onclick="openEditModal({{ ref.id }}, '{{ ref.raw_reference_text|escapejs }}', '{{ ref.target_article_doi|default_if_none:""|escapejs }}', '{{ ref.manual_data_json.title|default_if_none:""|escapejs }}', '{{ ref.manual_data_json.year|default_if_none:""|escapejs }}', '{{ ref.status|escapejs }}', '{{ ref.get_status_display|escapejs }}')">Редактировать</button>
+                <button onclick="deleteReference({{ ref.id }}, this)" style="background-color: #d9534f; color:white;">Удалить</button>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{# *** МОДАЛЬНОЕ ОКНО ДЛЯ ДОБАВЛЕНИЯ ССЫЛКИ *** #}
+<div id="addReferenceModal" style="display:none; position:fixed; z-index:1050; left:0; top:0; width:100%; height:100%; overflow:auto; background-color:rgba(0,0,0,0.4);">
+    <div style="background-color:#fefefe; margin:10% auto; padding:20px; border:1px solid #888; width:60%; max-width:600px; border-radius:5px;">
+        <span onclick="closeAddReferenceModal()" style="color:#aaa; float:right; font-size:28px; font-weight:bold; cursor:pointer;">&times;</span>
+        <h3>Добавить новую ссылку</h3>
+        <form id="addReferenceForm">
+            <p>
+                <label for="addRefTargetDoi">Целевой DOI (если известен):</label>
+                <input type="text" id="addRefTargetDoi" name="target_article_doi" placeholder="10.xxxx/xxxxx">
+            </p>
+            <p>
+                <label for="addRefTitle">Заголовок цитируемой статьи:</label>
+                <input type="text" id="addRefTitle" name="title" placeholder="Название цитируемой статьи">
+            </p>
+            <p>
+                <label for="addRefYear">Год:</label>
+                <input type="text" id="addRefYear" name="year" placeholder="ГГГГ">
+            </p>
+            <p>
+                <label for="addRefRawText">Полный текст ссылки (цитата):</label>
+                <textarea id="addRefRawText" name="raw_reference_text" rows="3" style="width: calc(100% - 22px); padding:10px; border:1px solid #ddd;"></textarea>
+            </p>
+            <button type="submit">Сохранить новую ссылку</button>
+            <button type="button" onclick="closeAddReferenceModal()" style="background-color:#ccc;">Отмена</button>
+        </form>
+    </div>
+</div>
+
+{# === МОДАЛЬНОЕ ОКНО ДЛЯ СОЗДАНИЯ НОВОГО АНАЛИЗИРУЕМОГО СЕГМЕНТА === #}
+<div id="segmentCreationModal" style="display:none; position:fixed; z-index:1060; left:0; top:0; width:100%; height:100%; overflow:auto; background-color:rgba(0,0,0,0.5);">
+    <div style="background-color:#fefefe; margin:5% auto; padding:20px; border:1px solid #888; width:70%; max-width:700px; border-radius:5px;">
+        <span onclick="closeSegmentCreationModal()" style="color:#aaa; float:right; font-size:28px; font-weight:bold; cursor:pointer;">&times;</span>
+        <h3>Создать новый анализируемый сегмент</h3>
+        <form id="segmentCreationForm">
+            <p>
+                <label for="segmentSectionKey">Ключ/Название секции (например, introduction, methods, или заголовок):</label>
+                <input type="text" id="segmentSectionKey" name="section_key" placeholder="Название секции">
+            </p>
+            <p>
+                <label for="segmentText">Текст сегмента:</label>
+                <textarea id="segmentText" name="segment_text" rows="5" style="width: calc(100% - 22px); padding:10px; border:1px solid #ddd;" required></textarea>
+            </p>
+            <p>
+                <label for="segmentInlineCitations">Маркеры инлайн-цитат (через запятую, например: [1], (Smith 2023)):</label>
+                <input type="text" id="segmentInlineCitations" name="inline_citation_markers" placeholder="[1], [2-5], (Author et al., Year)">
+            </p>
+            <div style="margin-bottom: 15px;">
+                <label>Связать с ссылками из библиографии:</label>
+                <div id="segmentReferencesChecklist" style="max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding:10px;">
+                    <p>Загрузка списка ссылок...</p>
+                </div>
+            </div>
+            <button type="submit">Сохранить сегмент</button>
+            <button type="button" onclick="closeSegmentCreationModal()" style="background-color:#ccc;">Отмена</button>
+        </form>
+    </div>
+</div>
+
+{# *** МОДАЛЬНОЕ ОКНО ДЛЯ ДОБАВЛЕНИЯ НОВОЙ СЕКЦИИ *** #}
+<div id="addSectionModal" style="display:none; position:fixed; z-index:1050; left:0; top:0; width:100%; height:100%; overflow:auto; background-color:rgba(0,0,0,0.4);">
+    <div style="background-color:#fefefe; margin:10% auto; padding:20px; border:1px solid #888; width:60%; max-width:600px; border-radius:5px;">
+        <span onclick="closeAddSectionModal()" style="color:#aaa; float:right; font-size:28px; font-weight:bold; cursor:pointer;">&times;</span>
+        <h3>Добавить новую секцию</h3>
+        <form id="addSectionForm">
+            <p>
+                <label for="newSectionTitle">Заголовок новой секции:</label>
+                <input type="text" id="newSectionTitle" name="title" required>
+            </p>
+            <p>
+                <label for="newSectionText">Текст новой секции:</label>
+                <textarea id="newSectionText" name="text" rows="5" style="width: calc(100% - 22px); padding:10px; border:1px solid #ddd;" required></textarea>
+            </p>
+            <button type="submit">Сохранить секцию</button>
+            <button type="button" onclick="closeAddSectionModal()" style="background-color:#ccc;">Отмена</button>
+        </form>
+    </div>
+</div>
+
+<div id="editReferenceModal" style="display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; overflow:auto; background-color:rgba(0,0,0,0.4);">
+    <div style="background-color:#fefefe; margin:10% auto; padding:20px; border:1px solid #888; width:60%; max-width:600px; border-radius:5px;">
+        <span onclick="closeEditModal()" style="color:#aaa; float:right; font-size:28px; font-weight:bold; cursor:pointer;">&times;</span>
+        <h3>Редактировать ссылку</h3>
+        <form id="editReferenceForm">
+            <input type="hidden" id="editRefId" name="id">
+            <p>
+                <label for="editRefRawText">Текст ссылки (Raw):</label>
+                <textarea id="editRefRawText" name="raw_reference_text" rows="3" style="width: calc(100% - 22px); padding:10px; border:1px solid #ddd;"></textarea>
+            </p>
+            <p>
+                <label for="editRefTargetDoi">Целевой DOI:</label>
+                <input type="text" id="editRefTargetDoi" name="target_article_doi" placeholder="10.xxxx/xxxxx">
+            </p>
+            <p>
+                <label for="editRefManualTitle">Заголовок (из Manual Data):</label>
+                <input type="text" id="editRefManualTitle" name="manual_title" placeholder="Название цитируемой статьи">
+            </p>
+            <p>
+                <label for="editRefManualYear">Год (из Manual Data):</label>
+                <input type="text" id="editRefManualYear" name="manual_year" placeholder="ГГГГ">
+            </p>
+            {# Другие поля из manual_data_json, если нужно #}
+            <p>
+                <label for="editRefStatus">Статус (текущий: <span id="currentRefStatusDisplay"></span>):</label>
+                <select id="editRefStatus" name="status">
+                    {% for value, display_name in ref_status_choices %} {# Передать ref_status_choices в контекст #}
+                        <option value="{{ value }}">{{ display_name }}</option>
+                    {% endfor %}
+                </select>
+            </p>
+            <button type="submit">Сохранить изменения</button>
+            <button type="button" onclick="closeEditModal()" style="background-color:#ccc;">Отмена</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+// Получаем данные из тега script, созданного json_script
+// Получаем начальное состояние structured_content
+const structuredContentElement = document.getElementById('initial-structured-content-data');
+let initialArticleStructuredContent = JSON.parse(structuredContentElement.textContent || '{}');
+
+// Получаем данные о ссылках из тега script, созданного json_script
+const refsDataElement = document.getElementById('article-references-data-script');
+const articleReferencesDataForModal = JSON.parse(refsDataElement.textContent || '[]');
+// Теперь articleReferencesDataForModal будет массивом массивов, как и ожидалось:
+// [[pk, doi, raw_text, manual_data_json_object_or_null], ...]
+
+
+
+// Получаем данные из тега script, созданного json_script
+//const structuredContentElement = document.getElementById('initial-structured-content-data');
+//let initialArticleStructuredContent = JSON.parse(structuredContentElement.textContent || '{}'); // Используем let, чтобы можно было обновить
+
+//const initialArticleStructuredContent = JSON.parse(document.getElementById('initial-structured-content-data').textContent || '{}');
+//const articleReferencesData = JSON.parse(document.getElementById('article-references-data').textContent || '[]');
+
+// --- JavaScript для создания анализируемого сегмента ---
+const createSegmentBtn = document.getElementById('createSegmentBtn');
+const segmentCreationModal = document.getElementById('segmentCreationModal');
+const segmentCreationForm = document.getElementById('segmentCreationForm');
+const segmentSectionKeyInput = document.getElementById('segmentSectionKey');
+const segmentTextInput = document.getElementById('segmentText');
+const segmentInlineCitationsInput = document.getElementById('segmentInlineCitations');
+const segmentReferencesChecklistDiv = document.getElementById('segmentReferencesChecklist');
+const articleIdForSegments = {{ article.pk }};
+
+//const initialArticleStructuredContent = JSON.parse(document.getElementById('initial-structured-content-data').textContent || '{}');
+const addSectionModal = document.getElementById('addSectionModal');
+const addSectionForm = document.getElementById('addSectionForm');
+const newSectionTitleInput = document.getElementById('newSectionTitle');
+const newSectionTextInput = document.getElementById('newSectionText');
+
+// --- JavaScript для модального окна добавления новой ССЫЛКИ ---
+const addReferenceModal = document.getElementById('addReferenceModal');
+const addReferenceForm = document.getElementById('addReferenceForm');
+
+// Показываем/скрываем кнопку "Создать сегмент" при выделении текста
+document.addEventListener('mouseup', function(event) {
+    const selection = window.getSelection();
+    if (selection.toString().trim().length > 5) { // Показываем кнопку, если выделено больше 5 символов
+        // Проверяем, что выделение не внутри модального окна или textarea
+        let parent = selection.anchorNode;
+        while (parent != null && parent !== document.body) {
+            if (parent.id === 'segmentCreationModal' || parent.id === 'editReferenceModal' || parent.id === 'addSectionModal' || parent.tagName === 'TEXTAREA' || parent.tagName === 'INPUT') {
+                createSegmentBtn.style.display = 'none';
+                return;
+            }
+            parent = parent.parentNode;
+        }
+        createSegmentBtn.style.display = 'block';
+    } else {
+        // Не скрываем кнопку сразу, если клик был не по ней (чтобы можно было нажать)
+        if (event.target !== createSegmentBtn && !createSegmentBtn.contains(event.target)) {
+                createSegmentBtn.style.display = 'none';
+        }
+    }
+});
+
+if (createSegmentBtn) {
+    createSegmentBtn.addEventListener('click', function() {
+        const selectedText = window.getSelection().toString().trim();
+        if (selectedText) {
+            segmentTextInput.value = selectedText;
+            // Пытаемся определить секцию, откуда был выделен текст (упрощенно)
+            let parentElement = window.getSelection().anchorNode;
+            let sectionKeyGuess = '';
+            while(parentElement && parentElement !== document.body) {
+                if(parentElement.id && parentElement.id.startsWith('section-')) {
+                    sectionKeyGuess = parentElement.id.replace('section-', '');
+                    break;
+                } else if (parentElement.classList && parentElement.classList.contains('section-editor')) {
+                    const h4 = parentElement.querySelector('h4 .edit-section-btn');
+                    if (h4 && h4.dataset.section) sectionKeyGuess = h4.dataset.section;
+                    else { // Для other_sections
+                        const h5 = parentElement.querySelector('h5');
+                        if(h5) sectionKeyGuess = h5.textContent.trim();
+                    }
+                    break;
+                }
+                parentElement = parentElement.parentNode;
+            }
+            segmentSectionKeyInput.value = sectionKeyGuess;
+
+            populateReferencesChecklist();
+            segmentCreationModal.style.display = 'block';
+        }
+        this.style.display = 'none'; // Скрываем кнопку после открытия модала
+    });
+}
+
+function closeSegmentCreationModal() {
+    if (segmentCreationModal) segmentCreationModal.style.display = 'none';
+}
+
+
+function populateReferencesChecklist() {
+    segmentReferencesChecklistDiv.innerHTML = '';
+    if (articleReferencesDataForModal.length === 0) {
+        segmentReferencesChecklistDiv.innerHTML = '<p>Для этой статьи нет ссылок.</p>';
+        return;
+    }
+    articleReferencesDataForModal.forEach(ref_data_array => {
+        // ref_data_array это [pk, target_article_doi, raw_reference_text, manual_data_json]
+        const ref_pk = ref_data_array[0];
+        const ref_doi = ref_data_array[1];
+        const ref_raw_text = ref_data_array[2];
+        const ref_manual_data = ref_data_array[3] || {}; // manual_data_json может быть null
+
+        let refLabelText = `ID: ${ref_pk}`;
+        if (ref_doi) {
+            refLabelText += ` (DOI: ${ref_doi})`;
+        } else if (ref_manual_data && ref_manual_data.title) { // Проверка, что ref_manual_data не null
+            refLabelText += ` (${String(ref_manual_data.title).substring(0,50)}...)`;
+        } else if (ref_raw_text) {
+            refLabelText += ` (${String(ref_raw_text).substring(0,50)}...)`;
+        }
+
+        const checkboxId = `ref-check-${ref_pk}`;
+        const div = document.createElement('div');
+        div.innerHTML = `<input type="checkbox" id="${checkboxId}" name="cited_references" value="${ref_pk}">
+                            <label for="${checkboxId}">${refLabelText}</label>`;
+        segmentReferencesChecklistDiv.appendChild(div);
+    });
+}
+
+/*
+function populateReferencesChecklist() {
+    segmentReferencesChecklistDiv.innerHTML = ''; // Очищаем
+    if (articleReferencesData.length === 0) {
+        segmentReferencesChecklistDiv.innerHTML = '<p>Для этой статьи нет ссылок.</p>';
+        return;
+    }
+    articleReferencesData.forEach(ref => {
+        let refLabelText = `ID: ${ref.pk}`;
+        if (ref.fields.target_article_doi) {
+            refLabelText += ` (DOI: ${ref.fields.target_article_doi})`;
+        } else if (ref.fields.manual_data_json && ref.fields.manual_data_json.title) {
+            refLabelText += ` (${ref.fields.manual_data_json.title.substring(0,50)}...)`;
+        } else if (ref.fields.raw_reference_text) {
+            refLabelText += ` (${ref.fields.raw_reference_text.substring(0,50)}...)`;
+        }
+
+        const checkboxId = `ref-check-${ref.pk}`;
+        const div = document.createElement('div');
+        div.innerHTML = `<input type="checkbox" id="${checkboxId}" name="cited_references" value="${ref.pk}">
+                            <label for="${checkboxId}">${refLabelText}</label>`;
+        segmentReferencesChecklistDiv.appendChild(div);
+    });
+}
+*/
+
+
+if (segmentCreationForm) {
+    segmentCreationForm.addEventListener('submit', function(event) {
+        event.preventDefault();
+        const selectedReferenceIds = Array.from(segmentCreationForm.querySelectorAll('input[name="cited_references"]:checked'))
+                                        .map(cb => parseInt(cb.value, 10));
+        const inlineMarkersText = segmentInlineCitationsInput.value.trim();
+        const inlineMarkersArray = inlineMarkersText ? inlineMarkersText.split(',').map(s => s.trim()).filter(s => s) : [];
+
+        const payload = {
+            article_id: articleIdForSegments, // Убедитесь, что эта переменная доступна
+            section_key: segmentSectionKeyInput.value.trim() || null,
+            segment_text: segmentTextInput.value.trim(),
+            inline_citation_markers: inlineMarkersArray,
+            cited_references: selectedReferenceIds
+        };
+
+        if (!payload.segment_text) {
+            alert("Текст сегмента не может быть пустым.");
+            return;
+        }
+
+        const saveButton = segmentCreationForm.querySelector('button[type="submit"]');
+        saveButton.disabled = true;
+        saveButton.textContent = 'Сохранение...';
+        addNotificationToDetail({ payload: { status: 'INFO', message: `Сохранение нового сегмента...`, identifier: `ArticleID:${articleIdForSegments}` } });
+
+        fetch(`/api/papers/analyzed-segments/`, { // Эндпоинт для создания
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCSRFToken(), 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json().then(data => ({ok: response.ok, status_code: response.status, data})))
+        .then(({ok, status_code, data}) => {
+            if (ok && (status_code === 201 || status_code === 200)) { // 201 Created
+                addNotificationToDetail({ payload: { status: 'SUCCESS', message: `Сегмент успешно создан (ID: ${data.id}).` }});
+                closeSegmentCreationModal();
+                window.location.reload(); // Простейший способ обновить список сегментов
+            } else {
+                let errorMessage = `Ошибка создания сегмента (${status_code}): `;
+                if (data) { for (const field in data) { errorMessage += `${field}: ${Array.isArray(data[field]) ? data[field].join(', ') : data[field]} `; } }
+                else { errorMessage += "Неизвестная ошибка сервера." }
+                addNotificationToDetail({ payload: { status: 'FAILURE', message: errorMessage, identifier: `ArticleID:${articleIdForSegments}` }});
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка при создании сегмента:', error);
+            addNotificationToDetail({ payload: { status: 'FAILURE', message: `Сетевая ошибка: ${error.message}`, identifier: `ArticleID:${articleIdForSegments}` }});
+        })
+        .finally(() => {
+            if(saveButton) { saveButton.disabled = false; saveButton.textContent = 'Сохранить сегмент'; }
+        });
+    });
+}
+
+
+function toggleRawContent(element, contentId) {
+    const contentDiv = document.getElementById(contentId);
+    if (contentDiv.style.display === "none" || contentDiv.style.display === "") {
+        contentDiv.style.display = "block";
+        element.textContent = "Скрыть данные";
+    } else {
+        contentDiv.style.display = "none";
+        element.textContent = "Показать данные";
+    }
+}
+
+const notificationsDiv = document.getElementById('notifications');
+const currentUserIdForWS = "{{ user_id }}"; // Из контекста Django
+
+// --- WebSocket для уведомлений (скопировано и адаптировано из submit_article.html) ---
+let ws_protocol_detail = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+let ws_url_detail = `${ws_protocol_detail}//${window.location.host}/ws/notifications/`;
+let socket_detail;
+
+function connectWebSocketDetail() {
+    if (!currentUserIdForWS || currentUserIdForWS === 'None') return;
+
+    socket_detail = new WebSocket(ws_url_detail);
+
+    socket_detail.onopen = function(e) {
+        console.log("WebSocket (detail page) соединение установлено.");
+        // Можно добавить сообщение в notificationsDiv
+    };
+
+    socket_detail.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        console.log("Получено WebSocket (detail page) сообщение:", data);
+        // Фильтруем уведомления, чтобы показать только те, что относятся к текущей статье, если это возможно.
+        // Например, если бы payload содержал article_id, по которому можно фильтровать.
+        // В текущей реализации send_user_notification не передает ID статьи-источника уведомления.
+        // Пока что будут отображаться все уведомления для пользователя.
+        addNotificationToDetail(data);
+    };
+
+    socket_detail.onclose = function(event) {
+        console.error('WebSocket (detail page) соединение закрыто:', event);
+        setTimeout(connectWebSocketDetail, 5000);
+    };
+    socket_detail.onerror = function(error) {
+        console.error('WebSocket (detail page) ошибка:', error);
+    };
+}
+
+function addNotificationToDetail(data) {
+    const notificationsContainer = document.getElementById('notifications'); // Целимся во внутренний div
+    const initialMsg = notificationsContainer.querySelector('p[style*="text-align: center"]');
+    if (initialMsg) {
+        initialMsg.remove(); // Удаляем стартовое сообщение "Ожидание уведомлений..."
+    }
+
+    let notificationHtml = `<div class="status-${data.payload?.status || 'INFO'}">`;
+    if (data.type === 'connection_established') {
+        notificationHtml += `<strong>${data.message || data.payload?.message}</strong>`;
+    } else if (data.type === 'task_notification' && data.payload) {
+        const p = data.payload;
+        notificationHtml += `<strong>Задача [${p.task_id || 'N/A'}] для ${p.source_api || 'Источник'} (${p.identifier || 'N/A'})</strong><br>`;
+        notificationHtml += `Статус: ${p.status}<br>`;
+        notificationHtml += `Сообщение: ${p.message}<br>`;
+        if (p.progress_percent !== undefined) { notificationHtml += `Прогресс: ${p.progress_percent}%<br>`; }
+        if (p.article_id) { notificationHtml += `ID статьи: ${p.article_id} (Создана: ${p.created === undefined ? 'N/A' : p.created})<br>`; }
+    } else if (data.payload) {
+         notificationHtml += `<strong>${data.payload.source_api || 'Система'} (${data.payload.identifier || 'N/A'})</strong><br>`;
+         notificationHtml += `Статус: ${data.payload.status}<br>`;
+         notificationHtml += `Сообщение: ${data.payload.message}<br>`;
+         if (data.payload.progress_percent !== undefined) { notificationHtml += `Прогресс: ${data.payload.progress_percent}%<br>`;}
+    } else {
+        notificationHtml += JSON.stringify(data);
+    }
+    notificationHtml += `</div>`;
+    notificationsContainer.insertAdjacentHTML('afterbegin', notificationHtml); // Добавляем новое сверху
+}
+
+connectWebSocketDetail(); // Подключаемся при загрузке страницы
+
+// function getCSRFToken() { return document.querySelector('[name=csrfmiddlewaretoken]')?.value || ''; }
+
+function getCSRFToken() {
+    // Ищем токен в фиктивной форме
+    const csrfInput = document.querySelector('form[style="display:none;"] input[name="csrfmiddlewaretoken"]');
+    if (csrfInput) {
+        return csrfInput.value;
+    }
+    // Запасной вариант: ищем в cookies
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.startsWith('csrftoken=')) {
+            return cookie.substring('csrftoken='.length, cookie.length);
+        }
+    }
+    return ''; // Возвращаем пустую строку, если не найден
+}
+
+function loadReferencedArticle(referenceLinkId, buttonElement) {
+    if (!referenceLinkId) return;
+
+    // Временно деактивируем кнопку, чтобы избежать двойных нажатий
+    buttonElement.disabled = true;
+    buttonElement.textContent = 'Загрузка...';
+
+    const apiUrl = `/api/papers/reference-links/${referenceLinkId}/load-article/`;
+
+    addNotificationToDetail({ // Локальное уведомление для пользователя
+        payload: {
+            status: 'INFO',
+            message: `Отправка запроса на загрузку статьи для ссылки ID ${referenceLinkId}...`,
+            identifier: `RefLinkID:${referenceLinkId}`
+        }
+    });
+
+    fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCSRFToken(), // Важно для POST-запросов в Django
+            'Content-Type': 'application/json'
+        },
+        // body: JSON.stringify({}) // Тело запроса не требуется для этого эндпоинта
+    })
+    .then(response => {
+        // Восстанавливаем кнопку после получения ответа, кроме случая, если ссылка уже была обработана (200 OK с info)
+        if (response.status !== 200 || !response.headers.get("content-type")?.includes("application/json")) {
+             // Если это не успешный info, который говорит что уже обработано, то можно разблокировать
+             // Но лучше оставить заблокированной, т.к. статус обновится через WebSocket и кнопка исчезнет/станет неактивной
+        }
+        return response.json().then(data => ({ ok: response.ok, status: response.status, data }));
+    })
+    .then(({ ok, status, data }) => {
+        console.log('Ответ от API load-referenced-article:', data);
+        if (ok) { // 200, 201, 202
+            if (data.info) { // Если сервер сообщил, что статья уже связана
+                 addNotificationToDetail({payload: {status: 'INFO', message: data.info, identifier: `RefLinkID:${referenceLinkId}`}});
+                 buttonElement.textContent = 'Уже загружена'; // Обновляем текст кнопки
+                 buttonElement.disabled = true;
+            } else {
+                 addNotificationToDetail({payload: {status: 'SUCCESS', message: data.message || `Запрос на загрузку для ссылки ID ${referenceLinkId} успешно отправлен.`, identifier: `RefLinkID:${referenceLinkId}`}});
+                 // Кнопка может оставаться disabled, т.к. статус ссылки обновится через WebSocket
+                 // и она либо исчезнет, либо станет неактивной в шаблоне при перезагрузке
+                 buttonElement.textContent = 'В обработке'; // Временно
+            }
+        } else {
+            addNotificationToDetail({payload: {status: 'FAILURE', message: `Ошибка (${status}): ${data.error || JSON.stringify(data)}`, identifier: `RefLinkID:${referenceLinkId}`}});
+            buttonElement.disabled = false; // Разблокируем кнопку, если ошибка
+            buttonElement.textContent = 'Загрузить по DOI';
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка при вызове API load-referenced-article:', error);
+        addNotificationToDetail({payload: {status: 'FAILURE', message: `Сетевая ошибка или ошибка парсинга: ${error.message}`, identifier: `RefLinkID:${referenceLinkId}`}});
+        buttonElement.disabled = false; // Разблокируем кнопку
+        buttonElement.textContent = 'Загрузить по DOI';
+    });
+}
+
+
+function findDoiForReference(referenceLinkId, buttonElement) {
+    if (!referenceLinkId) return;
+
+    buttonElement.disabled = true;
+    buttonElement.textContent = 'Поиск DOI...';
+
+    const apiUrl = `/api/papers/reference-links/${referenceLinkId}/find-doi/`;
+
+    addNotificationToDetail({
+        payload: {
+            status: 'INFO',
+            message: `Отправка запроса на поиск DOI для ссылки ID ${referenceLinkId}...`,
+            identifier: `RefLinkID:${referenceLinkId}` // Используем ID ссылки как идентификатор для уведомления
+        }
+    });
+
+    fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCSRFToken(),
+            'Content-Type': 'application/json'
+        },
+    })
+    .then(response => response.json().then(data => ({ ok: response.ok, status: response.status, data })))
+    .then(({ ok, status, data }) => {
+        console.log('Ответ от API find-doi-for-reference:', data);
+        if (ok) {
+            addNotificationToDetail({payload: {status: 'SUCCESS', message: data.message || `Запрос на поиск DOI для ссылки ID ${referenceLinkId} успешно отправлен.`, identifier: `RefLinkID:${referenceLinkId}`}});
+            // Кнопка может оставаться disabled, т.к. статус ссылки обновится через WebSocket
+            // и она либо исчезнет (если DOI найден), либо изменит текст/состояние.
+             buttonElement.textContent = 'В поиске'; // Временно
+        } else {
+            addNotificationToDetail({payload: {status: 'FAILURE', message: `Ошибка (${status}): ${data.error || data.info || JSON.stringify(data)}`, identifier: `RefLinkID:${referenceLinkId}`}});
+            buttonElement.disabled = false; // Разблокируем кнопку, если ошибка
+            buttonElement.textContent = 'Найти DOI';
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка при вызове API find-doi-for-reference:', error);
+        addNotificationToDetail({payload: {status: 'FAILURE', message: `Сетевая ошибка или ошибка парсинга: ${error.message}`, identifier: `RefLinkID:${referenceLinkId}`}});
+        buttonElement.disabled = false; // Разблокируем кнопку
+        buttonElement.textContent = 'Найти DOI';
+    });
+}
+
+
+function findAllReferenceDois(articleId, buttonElement) {
+    if (!articleId) return;
+
+    buttonElement.disabled = true;
+    buttonElement.textContent = 'Запускаю поиск...';
+
+    const apiUrl = `/api/papers/articles/${articleId}/find-all-reference-dois/`;
+
+    addNotificationToDetail({
+        payload: {
+            status: 'INFO',
+            message: `Отправка запроса на массовый поиск DOI для статьи ID ${articleId}...`,
+            identifier: `ArticleID:${articleId}`
+        }
+    });
+
+    fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCSRFToken(),
+            'Content-Type': 'application/json'
+        },
+    })
+    .then(response => response.json().then(data => ({ ok: response.ok, status: response.status, data })))
+    .then(({ ok, status, data }) => {
+        console.log('Ответ от API find-all-reference-dois:', data);
+        if (ok) { // 200, 202
+            addNotificationToDetail({payload: {status: 'SUCCESS', message: data.message || `Массовый поиск DOI запущен.`, identifier: `ArticleID:${articleId}`}});
+        } else {
+            addNotificationToDetail({payload: {status: 'FAILURE', message: `Ошибка (${status}): ${data.error || data.info || JSON.stringify(data)}`, identifier: `ArticleID:${articleId}`}});
+        }
+        // Кнопку можно оставить disabled или обновить текст, т.к. отдельные задачи будут обновлять UI через WebSocket
+        buttonElement.textContent = 'Поиск запущен';
+        // Можно добавить логику для повторной активации кнопки через некоторое время или по условию
+        // setTimeout(() => {
+        //     buttonElement.disabled = false;
+        //     buttonElement.textContent = 'Найти DOI для всех ненайденных';
+        // }, 5000); // Например, через 5 секунд
+    })
+    .catch(error => {
+        console.error('Ошибка при вызове API find-all-reference-dois:', error);
+        addNotificationToDetail({payload: {status: 'FAILURE', message: `Сетевая ошибка или ошибка парсинга: ${error.message}`, identifier: `ArticleID:${articleId}`}});
+        buttonElement.disabled = false;
+        buttonElement.textContent = 'Найти DOI для всех ненайденных';
+    });
+}
+
+
+const editModal = document.getElementById('editReferenceModal');
+const editForm = document.getElementById('editReferenceForm');
+const editRefIdInput = document.getElementById('editRefId');
+const editRefRawTextInput = document.getElementById('editRefRawText');
+const editRefTargetDoiInput = document.getElementById('editRefTargetDoi');
+const editRefManualTitleInput = document.getElementById('editRefManualTitle');
+const editRefManualYearInput = document.getElementById('editRefManualYear');
+const editRefStatusSelect = document.getElementById('editRefStatus');
+const currentRefStatusDisplaySpan = document.getElementById('currentRefStatusDisplay');
+
+
+function openEditModal(refId, rawText, targetDoi, manualTitle, manualYear, currentStatus, currentStatusDisplay) {
+    editRefIdInput.value = refId;
+    editRefRawTextInput.value = rawText || ''; // Убедимся, что не 'None' или 'undefined'
+    editRefTargetDoiInput.value = targetDoi || '';
+    editRefManualTitleInput.value = manualTitle || '';
+    editRefManualYearInput.value = manualYear || '';
+    editRefStatusSelect.value = currentStatus || '';
+    currentRefStatusDisplaySpan.textContent = currentStatusDisplay || 'N/A';
+
+    editModal.style.display = 'block';
+}
+
+function closeEditModal() {
+    editModal.style.display = 'none';
+}
+
+editForm.addEventListener('submit', function(event) {
+    event.preventDefault();
+    const refId = editRefIdInput.value;
+
+    // Собираем данные из формы
+    // manual_data_json должен быть объектом
+    const manualData = {
+        title: editRefManualTitleInput.value.trim() || null,
+        year: editRefManualYearInput.value.trim() || null,
+        // Сохраняем существующие поля manual_data_json, если они были, и перезаписываем только эти
+        // Это потребует загрузки текущего manual_data_json при открытии модала, если оно сложнее
+    };
+
+    // Чтобы не потерять другие поля в manual_data_json, которые не редактируются в этой форме,
+    // лучше загружать полный manual_data_json при открытии модала и затем обновлять его.
+    // Для простоты сейчас мы создаем его заново с полями из формы.
+    // Если manual_data_json может содержать и другие ключи, то потребуется более сложная логика.
+
+    const payload = {
+        raw_reference_text: editRefRawTextInput.value.trim(),
+        target_article_doi: editRefTargetDoiInput.value.trim() || null, // Отправляем null, если пусто
+        manual_data_json: manualData,
+        status: editRefStatusSelect.value // Пользователь может изменить статус, если это разрешено
+    };
+
+    // Удаляем null значения из manualData, чтобы не засорять JSON
+    for (const key in payload.manual_data_json) {
+        if (payload.manual_data_json[key] === null || payload.manual_data_json[key] === '') {
+            delete payload.manual_data_json[key];
+        }
+    }
+    if (Object.keys(payload.manual_data_json).length === 0) {
+         payload.manual_data_json = null; // Если объект пуст, отправляем null
+    }
+
+
+    const apiUrl = `/api/papers/referencelinks/${refId}/`; // Стандартный detail endpoint для PATCH/PUT
+
+    addNotificationToDetail({ payload: { status: 'INFO', message: `Сохранение изменений для ссылки ID ${refId}...`, identifier: `RefLinkID:${refId}` } });
+
+    fetch(apiUrl, {
+        method: 'PATCH', // Используем PATCH для частичного обновления
+        headers: {
+            'X-CSRFToken': getCSRFToken(),
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json().then(data => ({ ok: response.ok, status: response.status, data })))
+    .then(({ ok, status, data }) => {
+        if (ok) {
+            addNotificationToDetail({ payload: { status: 'SUCCESS', message: `Ссылка ID ${refId} успешно обновлена.`, identifier: `RefLinkID:${refId}` } });
+            closeEditModal();
+            // Перезагрузка страницы для отображения изменений - самый простой способ
+            // Либо более сложный JS для обновления конкретной ссылки в списке на лету
+            window.location.reload();
+        } else {
+            let errorMessage = `Ошибка (${status}): `;
+            if (data) {
+                for (const field in data) {
+                    errorMessage += `${field}: ${data[field].join ? data[field].join(', ') : data[field]} `;
+                }
+            } else {
+                errorMessage += "Неизвестная ошибка сервера."
+            }
+            addNotificationToDetail({ payload: { status: 'FAILURE', message: errorMessage, identifier: `RefLinkID:${refId}` } });
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка при обновлении ReferenceLink:', error);
+        addNotificationToDetail({ payload: { status: 'FAILURE', message: `Сетевая ошибка или ошибка парсинга: ${error.message}`, identifier: `RefLinkID:${refId}` } });
+    });
+});
+
+// Закрытие модального окна при клике вне его (опционально)
+window.onclick = function(event) {
+    if (event.target == editModal) {
+        closeEditModal();
+    }
+}
+
+
+function loadAllLinkedReferences(articleId, buttonElement) {
+    if (!articleId) return;
+
+    buttonElement.disabled = true;
+    buttonElement.textContent = 'Запускаю загрузку...';
+
+    const apiUrl = `/api/papers/articles/${articleId}/load-all-linked-references/`;
+
+    addNotificationToDetail({
+        payload: {
+            status: 'INFO',
+            message: `Отправка запроса на массовую загрузку статей по ссылкам для статьи ID ${articleId}...`,
+            identifier: `ArticleID:${articleId}`
+        }
+    });
+
+    fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCSRFToken(),
+            'Content-Type': 'application/json'
+        },
+    })
+    .then(response => response.json().then(data => ({ ok: response.ok, status: response.status, data })))
+    .then(({ ok, status, data }) => {
+        console.log('Ответ от API load-all-linked-references:', data);
+        if (ok) { // 200, 202
+            addNotificationToDetail({payload: {status: 'SUCCESS', message: data.message || `Массовая загрузка статей по ссылкам запущена.`, identifier: `ArticleID:${articleId}`}});
+        } else {
+            addNotificationToDetail({payload: {status: 'FAILURE', message: `Ошибка (${status}): ${data.error || data.info || JSON.stringify(data)}`, identifier: `ArticleID:${articleId}`}});
+        }
+        buttonElement.textContent = 'Загрузка запущена';
+        // Можно добавить логику для повторной активации кнопки через некоторое время
+        // setTimeout(() => {
+        //     buttonElement.disabled = false;
+        //     buttonElement.textContent = 'Загрузить все с DOI';
+        // }, 10000); // Например, через 10 секунд
+    })
+    .catch(error => {
+        console.error('Ошибка при вызове API load-all-linked-references:', error);
+        addNotificationToDetail({payload: {status: 'FAILURE', message: `Сетевая ошибка или ошибка парсинга: ${error.message}`, identifier: `ArticleID:${articleId}`}});
+        buttonElement.disabled = false;
+        buttonElement.textContent = 'Загрузить все с DOI';
+    });
+}
+
+
+function reprocessArticle(articleId, buttonElement) {
+    if (!articleId) return;
+
+    if (!confirm("Вы уверены, что хотите заново обработать эту статью? Существующие данные могут быть обновлены.")) {
+        return;
+    }
+
+    buttonElement.disabled = true;
+    buttonElement.textContent = 'Переобработка...';
+
+    const apiUrl = `/api/papers/articles/${articleId}/reprocess/`;
+
+    addNotificationToDetail({ // Используем существующую функцию для добавления уведомлений на страницу
+        payload: {
+            status: 'INFO',
+            message: `Отправка запроса на переобработку статьи ID ${articleId}...`,
+            identifier: `ArticleID:${articleId}` // Идентификатор для уведомления
+        }
+    });
+
+    fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCSRFToken(),
+            'Content-Type': 'application/json'
+        },
+    })
+    .then(response => response.json().then(data => ({ ok: response.ok, status: response.status, data })))
+    .then(({ ok, status, data }) => {
+        console.log('Ответ от API reprocess-article:', data);
+        if (ok) { // 202 Accepted
+            addNotificationToDetail({payload: {status: 'SUCCESS', message: data.message || `Запрос на переобработку статьи ID ${articleId} успешно отправлен.`, identifier: `ArticleID:${articleId}`}});
+        } else {
+            addNotificationToDetail({payload: {status: 'FAILURE', message: `Ошибка (${status}): ${data.error || JSON.stringify(data)}`, identifier: `ArticleID:${articleId}`}});
+        }
+        // Кнопку можно оставить disabled или обновить текст, т.к. WebSocket покажет дальнейший прогресс
+        buttonElement.textContent = 'В обработке';
+        // setTimeout(() => { buttonElement.disabled = false; buttonElement.textContent = 'Переобработать статью'; }, 5000);
+    })
+    .catch(error => {
+        console.error('Ошибка при вызове API reprocess-article:', error);
+        addNotificationToDetail({payload: {status: 'FAILURE', message: `Сетевая ошибка или ошибка парсинга: ${error.message}`, identifier: `ArticleID:${articleId}`}});
+        buttonElement.disabled = false;
+        buttonElement.textContent = 'Переобработать статью';
+    });
+}
+
+
+function deleteArticle(articleId, buttonElement) {
+    if (!articleId) return;
+
+    if (!confirm("Вы уверены, что хотите удалить эту статью и все связанные с ней данные? Это действие необратимо.")) {
+        return;
+    }
+
+    buttonElement.disabled = true;
+    buttonElement.textContent = 'Удаление...';
+
+    // Стандартный DRF endpoint для удаления объекта
+    const apiUrl = `/api/papers/articles/${articleId}/`;
+
+    addNotificationToDetail({
+        payload: {
+            status: 'INFO',
+            message: `Отправка запроса на удаление статьи ID ${articleId}...`,
+            identifier: `ArticleID:${articleId}`
+        }
+    });
+
+    fetch(apiUrl, {
+        method: 'DELETE', // Используем DELETE метод
+        headers: {
+            'X-CSRFToken': getCSRFToken(),
+            // 'Content-Type': 'application/json' // DELETE обычно не требует Content-Type и body
+        },
+    })
+    .then(response => {
+        if (response.status === 204) { // 204 No Content - успешное удаление
+            return { ok: true, status: response.status, data: { message: "Статья успешно удалена." } };
+        }
+        // Если есть тело ответа с ошибкой
+        return response.json().then(data => ({ ok: response.ok, status: response.status, data }));
+    })
+    .then(({ ok, status, data }) => {
+        console.log('Ответ от API delete-article:', data);
+        if (ok) { // 204 No Content
+            addNotificationToDetail({payload: {status: 'SUCCESS', message: data.message || `Статья ID ${articleId} успешно удалена. Перенаправление на список статей...`, identifier: `ArticleID:${articleId}`}});
+            // Перенаправляем на список статей после успешного удаления
+            window.location.href = "{% url 'article_list' %}";
+        } else {
+            addNotificationToDetail({payload: {status: 'FAILURE', message: `Ошибка удаления (${status}): ${data.error || data.detail || JSON.stringify(data)}`, identifier: `ArticleID:${articleId}`}});
+            buttonElement.disabled = false;
+            buttonElement.textContent = 'Удалить статью';
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка при вызове API delete-article:', error);
+        addNotificationToDetail({payload: {status: 'FAILURE', message: `Сетевая ошибка или ошибка парсинга при удалении: ${error.message}`, identifier: `ArticleID:${articleId}`}});
+        buttonElement.disabled = false;
+        buttonElement.textContent = 'Удалить статью';
+    });
+}
+
+
+document.addEventListener('DOMContentLoaded', function() {
+    // ... (существующие слушатели, например, для toggleButtons связанных статей, если это на другой странице) ...
+
+    document.querySelectorAll('.edit-section-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const sectionKey = this.dataset.section;
+            const displayDiv = document.getElementById(`display-${sectionKey}`);
+            const formDiv = document.getElementById(`form-${sectionKey}`);
+            const textarea = document.getElementById(`textarea-${sectionKey}`);
+
+            // Скрываем отображение текста и кнопку "Редактировать"
+            displayDiv.style.display = 'none';
+            this.style.display = 'none';
+
+            // Показываем форму редактирования
+            formDiv.style.display = 'block';
+
+            // ЗАПОЛНЯЕМ TEXTAREA из initialArticleStructuredContent
+            // Это гарантирует, что мы берем текст конкретной секции, как он был загружен с сервера,
+            // или пустоту, если для этой секции текста не было.
+            textarea.value = initialArticleStructuredContent[sectionKey] || ""; // Если ключа нет или значение null/undefined, будет пустая строка
+
+            textarea.focus();
+        });
+    });
+
+    document.querySelectorAll('.cancel-section-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const sectionKey = this.dataset.section;
+            document.getElementById(`form-${sectionKey}`).style.display = 'none';
+            document.getElementById(`display-${sectionKey}`).style.display = 'block';
+            document.querySelector(`.edit-section-btn[data-section="${sectionKey}"]`).style.display = 'inline-block';
+        });
+    });
+
+    // Обработчик для .save-section-btn (использует initialArticleStructuredContent для формирования payload)
+    document.querySelectorAll('.save-section-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const sectionKey = this.dataset.section;
+            const newText = document.getElementById(`textarea-${sectionKey}`).value.trim();
+            const articleId = {{ article.pk }};
+
+            // Создаем глубокую копию initialArticleStructuredContent (или текущего состояния, если вы его обновляете в JS)
+            // и обновляем только нужную секцию
+            let payloadStructuredContent = JSON.parse(JSON.stringify(initialArticleStructuredContent || {}));
+
+            if (newText) {
+                payloadStructuredContent[sectionKey] = newText;
+            } else {
+                // Если текст пустой, удаляем ключ из объекта, чтобы на бэкенде секция тоже очистилась или удалилась
+                // (зависит от того, как ваш бэкенд обрабатывает отсутствие ключа при PATCH)
+                // Если хотите передать пустую строку, то: payloadStructuredContent[sectionKey] = "";
+                delete payloadStructuredContent[sectionKey];
+            }
+
+            const payload = {
+                structured_content: payloadStructuredContent
+            };
+
+            // ... (остальная часть fetch-запроса для сохранения, как в предыдущем ответе) ...
+            // ВАЖНО: После успешного сохранения и вызова window.location.reload();
+            // initialArticleStructuredContent будет автоматически обновлен свежими данными с сервера.
+            // Если вы НЕ перезагружаете страницу, вам нужно будет обновить initialArticleStructuredContent
+            // данными из ответа сервера: initialArticleStructuredContent = data.structured_content;
+            // (и убедиться, что data.structured_content содержит полный и актуальный объект).
+
+            button.disabled = true;
+            button.textContent = 'Сохранение...';
+            addNotificationToDetail({ payload: { status: 'INFO', message: `Сохранение секции "${sectionKey}"...`, identifier: `ArticleID:${articleId}` } });
+
+            fetch(`/api/papers/articles/${articleId}/`, {
+                method: 'PATCH',
+                headers: {
+                    'X-CSRFToken': getCSRFToken(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json().then(data => ({ok: response.ok, status_code: response.status, data})))
+            .then(({ok, status_code, data}) => {
+                if (ok) {
+                    addNotificationToDetail({ payload: { status: 'SUCCESS', message: `Секция "${sectionKey}" успешно сохранена.` }});
+                    // Вместо обновления DOM вручную, перезагружаем страницу,
+                    // чтобы все данные, включая initialArticleStructuredContent и cleaned_text_for_llm, были актуальны.
+                    window.location.reload();
+                } else {
+                    let errorMessage = `Ошибка сохранения (${status_code}): `;
+                    if (data) {
+                        for (const field in data) {
+                            errorMessage += `${field}: ${Array.isArray(data[field]) ? data[field].join(', ') : data[field]} `;
+                        }
+                    } else { errorMessage += "Неизвестная ошибка сервера." }
+                    addNotificationToDetail({ payload: { status: 'FAILURE', message: errorMessage, identifier: `ArticleID:${articleId}` }});
+                    button.disabled = false; // Возвращаем кнопку в активное состояние при ошибке
+                    button.textContent = 'Сохранить';
+                }
+            })
+            .catch(error => {
+                console.error(`Ошибка сохранения секции ${sectionKey}:`, error);
+                addNotificationToDetail({ payload: { status: 'FAILURE', message: `Сетевая ошибка: ${error.message}`, identifier: `ArticleID:${articleId}` }});
+                button.disabled = false;
+                button.textContent = 'Сохранить';
+            });
+        });
+    });
+
+    // Функции теперь могут быть определены внутри DOMContentLoaded или на верхнем уровне,
+    // так как они будут вызываться из слушателей, определенных в той же области видимости.
+    function openAddSectionModal() {
+        if (newSectionTitleInput) newSectionTitleInput.value = '';
+        if (newSectionTextInput) newSectionTextInput.value = '';
+        if (addSectionModal) addSectionModal.style.display = 'block';
+        if (newSectionTitleInput) newSectionTitleInput.focus();
+    }
+
+    function closeAddSectionModal() {
+        if (addSectionModal) addSectionModal.style.display = 'none';
+    }
+
+    // Слушатель для кнопки открытия модального окна
+    const openModalButton = document.getElementById('openAddSectionModalBtn');
+    if (openModalButton) {
+        openModalButton.addEventListener('click', openAddSectionModal);
+    }
+
+    /*
+    addSectionForm.addEventListener('submit', function(event) {
+        event.preventDefault();
+        const sectionTitle = newSectionTitleInput.value.trim();
+        const sectionText = newSectionTextInput.value.trim();
+        const articleId = {{ article.pk }};
+
+        if (!sectionTitle || !sectionText) {
+            alert("Заголовок и текст секции не могут быть пустыми.");
+            return;
+        }
+
+        // Получаем текущую копию structured_content
+        let payloadStructuredContent = JSON.parse(JSON.stringify(initialArticleStructuredContent || {}));
+
+        // Убеждаемся, что other_sections это массив
+        if (!Array.isArray(payloadStructuredContent.other_sections)) {
+            payloadStructuredContent.other_sections = [];
+        }
+
+        // Добавляем новую секцию
+        payloadStructuredContent.other_sections.push({
+            title: sectionTitle,
+            text: sectionText
+        });
+
+        const payload = {
+            structured_content: payloadStructuredContent
+        };
+
+        const saveButton = addSectionForm.querySelector('button[type="submit"]');
+        saveButton.disabled = true;
+        saveButton.textContent = 'Сохранение...';
+
+        addNotificationToDetail({ payload: { status: 'INFO', message: `Добавление секции "${sectionTitle}"...`, identifier: `ArticleID:${articleId}` } });
+
+        fetch(`/api/papers/articles/${articleId}/`, {
+            method: 'PATCH',
+            headers: {
+                'X-CSRFToken': getCSRFToken(),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json().then(data => ({ok: response.ok, status_code: response.status, data})))
+        .then(({ok, status_code, data}) => {
+            if (ok) {
+                addNotificationToDetail({ payload: { status: 'SUCCESS', message: `Секция "${sectionTitle}" успешно добавлена.` }});
+                closeAddSectionModal();
+                // Обновляем initialArticleStructuredContent и перезагружаем страницу для отображения всех изменений
+                // initialArticleStructuredContent = data.structured_content; // Если API возвращает обновленный объект
+                window.location.reload();
+            } else {
+                let errorMessage = `Ошибка добавления секции (${status_code}): `;
+                 if (data) { for (const field in data) { errorMessage += `${field}: ${Array.isArray(data[field]) ? data[field].join(', ') : data[field]} `; } }
+                 else { errorMessage += "Неизвестная ошибка сервера." }
+                addNotificationToDetail({ payload: { status: 'FAILURE', message: errorMessage, identifier: `ArticleID:${articleId}` }});
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка при добавлении новой секции:', error);
+            addNotificationToDetail({ payload: { status: 'FAILURE', message: `Сетевая ошибка: ${error.message}`, identifier: `ArticleID:${articleId}` }});
+        })
+        .finally(() => {
+            saveButton.disabled = false;
+            saveButton.textContent = 'Сохранить секцию';
+        });
+    });
+    */
+
+    if (addSectionForm) { // Проверка на существование формы
+        addSectionForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            const sectionTitle = newSectionTitleInput.value.trim();
+            const sectionText = newSectionTextInput.value.trim();
+            const articleId = {{ article.pk }};
+
+            if (!sectionTitle || !sectionText) {
+                alert("Заголовок и текст секции не могут быть пустыми.");
+                return;
+            }
+
+            let payloadStructuredContent = JSON.parse(JSON.stringify(initialArticleStructuredContent || {}));
+
+            if (!Array.isArray(payloadStructuredContent.other_sections)) {
+                payloadStructuredContent.other_sections = [];
+            }
+            payloadStructuredContent.other_sections.push({
+                title: sectionTitle,
+                text: sectionText
+            });
+
+            const payload = { structured_content: payloadStructuredContent };
+            const saveButton = addSectionForm.querySelector('button[type="submit"]');
+            saveButton.disabled = true;
+            saveButton.textContent = 'Сохранение...';
+
+            addNotificationToDetail({ payload: { status: 'INFO', message: `Добавление секции "${sectionTitle}"...`, identifier: `ArticleID:${articleId}` } });
+
+            fetch(`/api/papers/articles/${articleId}/`, {
+                method: 'PATCH',
+                headers: { 'X-CSRFToken': getCSRFToken(), 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json().then(data => ({ok: response.ok, status_code: response.status, data})))
+            .then(({ok, status_code, data}) => {
+                if (ok) {
+                    addNotificationToDetail({ payload: { status: 'SUCCESS', message: `Секция "${sectionTitle}" успешно добавлена.` }});
+                    closeAddSectionModal();
+                    // Обновляем initialArticleStructuredContent глобально, если не перезагружаем
+                    if (data && data.structured_content) { // Предполагаем, что API возвращает обновленный article или structured_content
+                        initialArticleStructuredContent = data.structured_content;
+                    }
+                    window.location.reload(); // Перезагрузка для простоты
+                } else {
+                    // ... обработка ошибок ...
+                    let errorMessage = `Ошибка добавления секции (${status_code}): `;
+                    if (data) { for (const field in data) { errorMessage += `${field}: ${Array.isArray(data[field]) ? data[field].join(', ') : data[field]} `; } }
+                    else { errorMessage += "Неизвестная ошибка сервера." }
+                    addNotificationToDetail({ payload: { status: 'FAILURE', message: errorMessage, identifier: `ArticleID:${articleId}` }});
+                }
+            })
+            .catch(error => {
+                // ... обработка ошибок ...
+                addNotificationToDetail({ payload: { status: 'FAILURE', message: `Сетевая ошибка: ${error.message}`, identifier: `ArticleID:${articleId}` }});
+            })
+            .finally(() => {
+                if (saveButton) { // Проверяем, что saveButton все еще существует
+                    saveButton.disabled = false;
+                    saveButton.textContent = 'Сохранить секцию';
+                }
+            });
+        });
+    }
+
+    // Слушатели для кнопок удаления кастомных секций
+    // Используем делегирование событий, если секции могут добавляться динамически без перезагрузки
+    // Но так как у нас пока перезагрузка после добавления/редактирования, прямой поиск кнопок сработает.
+    document.querySelectorAll('.delete-custom-section-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const sectionIndex = parseInt(this.dataset.sectionIndex, 10);
+            const sectionTitle = this.dataset.sectionTitle || "эту секцию";
+            const articleId = {{ article.pk }};
+
+            if (isNaN(sectionIndex)) {
+                console.error("Некорректный индекс секции для удаления.");
+                addNotificationToDetail({ payload: { status: 'FAILURE', message: 'Ошибка: Не удалось определить секцию для удаления.' }});
+                return;
+            }
+
+            if (!confirm(`Вы уверены, что хотите удалить секцию "${sectionTitle}"? Это действие необратимо.`)) {
+                return;
+            }
+
+            // Создаем глубокую копию initialArticleStructuredContent
+            let payloadStructuredContent = JSON.parse(JSON.stringify(initialArticleStructuredContent || {}));
+
+            // Убеждаемся, что other_sections существует и является массивом
+            if (payloadStructuredContent.other_sections && Array.isArray(payloadStructuredContent.other_sections)) {
+                if (sectionIndex >= 0 && sectionIndex < payloadStructuredContent.other_sections.length) {
+                    payloadStructuredContent.other_sections.splice(sectionIndex, 1); // Удаляем элемент по индексу
+                } else {
+                    console.error(`Индекс секции ${sectionIndex} вне диапазона для other_sections.`);
+                    addNotificationToDetail({ payload: { status: 'FAILURE', message: 'Ошибка: Секция для удаления не найдена (неверный индекс).' }});
+                    return;
+                }
+            } else {
+                console.warn("Массив 'other_sections' не найден или не является массивом в structured_content.");
+                // Если other_sections нет, то и удалять нечего - это странная ситуация, если кнопка была нажата
+                addNotificationToDetail({ payload: { status: 'INFO', message: 'Нет кастомных секций для удаления.' }});
+                return;
+            }
+
+            const payload = {
+                structured_content: payloadStructuredContent
+            };
+
+            this.disabled = true;
+            this.textContent = 'Удаление...';
+
+            addNotificationToDetail({
+                payload: {
+                    status: 'INFO',
+                    message: `Удаление секции "${sectionTitle}"...`,
+                    identifier: `ArticleID:${articleId}`
+                }
+            });
+
+            fetch(`/api/papers/articles/${articleId}/`, {
+                method: 'PATCH',
+                headers: {
+                    'X-CSRFToken': getCSRFToken(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json().then(data => ({ok: response.ok, status_code: response.status, data})))
+            .then(({ok, status_code, data}) => {
+                if (ok) {
+                    addNotificationToDetail({ payload: { status: 'SUCCESS', message: `Секция "${sectionTitle}" успешно удалена.` }});
+
+                    // Динамическое удаление HTML элемента секции со страницы
+                    const sectionElementToRemove = document.getElementById(`custom-section-${sectionIndex}`);
+                    if (sectionElementToRemove) {
+                        sectionElementToRemove.remove();
+                    }
+
+                    // Обновляем наш локальный initialArticleStructuredContent, чтобы он был актуален
+                    // если пользователь захочет удалить еще одну секцию без перезагрузки страницы.
+                    if (data && data.structured_content) {
+                        initialArticleStructuredContent = data.structured_content;
+                    } else {
+                        // Если API не вернул обновленный structured_content, берем наш измененный payload
+                        initialArticleStructuredContent = payloadStructuredContent;
+                    }
+                    // Перезагрузка страницы для полной синхронизации (включая cleaned_text_for_llm) - более простой вариант
+                    // window.location.reload();
+                } else {
+                    let errorMessage = `Ошибка удаления секции (${status_code}): `;
+                    if (data) { for (const field in data) { errorMessage += `${field}: ${Array.isArray(data[field]) ? data[field].join(', ') : data[field]} `; } }
+                    else { errorMessage += "Неизвестная ошибка сервера." }
+                    addNotificationToDetail({ payload: { status: 'FAILURE', message: errorMessage, identifier: `ArticleID:${articleId}` }});
+                    this.disabled = false; // Возвращаем кнопку в активное состояние при ошибке
+                    this.textContent = 'Удалить эту секцию';
+                }
+            })
+            .catch(error => {
+                console.error('Ошибка при удалении кастомной секции:', error);
+                addNotificationToDetail({ payload: { status: 'FAILURE', message: `Сетевая ошибка: ${error.message}`, identifier: `ArticleID:${articleId}` }});
+                this.disabled = false;
+                this.textContent = 'Удалить эту секцию';
+            });
+        });
+    });
+
+});
+
+document.querySelectorAll('.llm-analyze-segment-btn').forEach(button => {
+    button.addEventListener('click', function() {
+        const segmentId = this.dataset.segmentId;
+        if (!segmentId) return;
+
+        if (!confirm("Запустить LLM анализ для этого сегмента? Это может занять некоторое время.")) {
+            return;
+        }
+
+        this.disabled = true;
+        this.textContent = 'LLM Анализ...';
+
+        const resultsDiv = document.getElementById(`llm-analysis-results-${segmentId}`);
+        if (resultsDiv) {
+             resultsDiv.innerHTML = '<p><strong>LLM Анализ:</strong> Запрос отправлен, ожидание...</p>';
+        }
+
+
+        addNotificationToDetail({ payload: { status: 'INFO', message: `Запрос на LLM анализ для сегмента ID ${segmentId}...`, identifier: `SegmentID:${segmentId}` } });
+
+        fetch(`/api/papers/analyzed-segments/${segmentId}/run-llm-analysis/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCSRFToken(), 'Content-Type': 'application/json' },
+        })
+        .then(response => response.json().then(data => ({ok: response.ok, status_code: response.status, data})))
+        .then(({ok, status_code, data}) => {
+            if (ok) { // 202 Accepted
+                addNotificationToDetail({ payload: { status: 'SUCCESS', message: data.message || `Задача LLM анализа для сегмента ID ${segmentId} поставлена в очередь.`, identifier: `SegmentID:${segmentId}` }});
+                // Текст кнопки обновится через WebSocket или можно здесь поменять на "В обработке"
+                this.textContent = 'LLM в работе...';
+            } else {
+                addNotificationToDetail({ payload: { status: 'FAILURE', message: `Ошибка запуска LLM анализа (${status_code}): ${data.error || JSON.stringify(data)}`, identifier: `SegmentID:${segmentId}` }});
+                this.disabled = false;
+                this.textContent = 'Анализировать с LLM';
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка при запуске LLM анализа для сегмента:', error);
+            addNotificationToDetail({ payload: { status: 'FAILURE', message: `Сетевая ошибка: ${error.message}`, identifier: `SegmentID:${segmentId}` }});
+            this.disabled = false;
+            this.textContent = 'Анализировать с LLM';
+        });
+    });
+});
+// В WebSocket onmessage обработчике (addNotificationToDetail) нужно будет обновлять llm-analysis-results-ID
+// когда приходит уведомление об успешном завершении LLM задачи.
+// Примерно так в addNotificationToDetail, после разбора data.payload:
+// if (p.source_api === 'LLM_Analysis' && p.status === 'SUCCESS' && p.analysis_data) {
+//     const analysisResultsDiv = document.getElementById(`llm-analysis-results-${p.analysis_data.segment_id}`);
+//     if (analysisResultsDiv) {
+//         let html = '<strong>LLM Анализ:</strong>';
+//         html += `<p><i>Заметки:</i> ${p.analysis_data.notes.replace(/\n/g, '<br>')}</p>`;
+//         html += `<p><i>Оценка достоверности (1-5):</i> ${p.analysis_data.score !== null ? p.analysis_data.score : "не оценено"}</p>`;
+//         html += `<p><small>Модель: <span class="math-inline">\{p\.analysis\_data\.model \|\| "не указана"\} \(</span>{new Date().toLocaleString()})</small></p>`;
+//         analysisResultsDiv.innerHTML = html;
+//         const btn = document.querySelector(`.llm-analyze-segment-btn[data-segment-id="${p.analysis_data.segment_id}"]`);
+//         if(btn) { btn.textContent = 'Анализировать с LLM (повторно)'; btn.disabled = false;}
+//     }
+// }
+
+
+function openAddReferenceModal() {
+    if(addReferenceForm) addReferenceForm.reset(); // Очищаем форму
+    if(addReferenceModal) addReferenceModal.style.display = 'block';
+}
+
+function closeAddReferenceModal() {
+    if(addReferenceModal) addReferenceModal.style.display = 'none';
+}
+
+if (addReferenceForm) {
+    addReferenceForm.addEventListener('submit', function(event) {
+        event.preventDefault();
+        const articleId = {{ article.pk }};
+        const formData = new FormData(this);
+
+        const manualData = {
+            title: formData.get('title'),
+            year: formData.get('year')
+        };
+
+        const payload = {
+            source_article: articleId, // ID текущей (целевой) статьи
+            target_article_doi: formData.get('target_article_doi').trim() || null,
+            raw_reference_text: formData.get('raw_reference_text').trim(),
+            manual_data_json: manualData,
+        };
+
+        const saveButton = this.querySelector('button[type="submit"]');
+        saveButton.disabled = true;
+        saveButton.textContent = 'Сохранение...';
+
+        fetch(`/api/papers/referencelinks/`, { // POST на эндпоинт списка для создания
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCSRFToken(), 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json().then(data => ({ok: response.ok, status_code: response.status, data})))
+        .then(({ok, status_code, data}) => {
+            if (ok && status_code === 201) { // 201 Created
+                addNotificationToDetail({ payload: { status: 'SUCCESS', message: `Новая ссылка успешно добавлена (ID: ${data.id}).` }});
+                closeAddReferenceModal();
+                window.location.reload(); // Перезагружаем страницу, чтобы увидеть новую ссылку в списке
+            } else {
+                let errorMessage = `Ошибка добавления ссылки (${status_code}): `;
+                if (data) { for (const field in data) { errorMessage += `${field}: ${Array.isArray(data[field]) ? data[field].join(', ') : data[field]} `; } }
+                else { errorMessage += "Неизвестная ошибка сервера." }
+                addNotificationToDetail({ payload: { status: 'FAILURE', message: errorMessage }});
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка при добавлении новой ссылки:', error);
+            addNotificationToDetail({ payload: { status: 'FAILURE', message: `Сетевая ошибка: ${error.message}` }});
+        })
+        .finally(() => {
+            if(saveButton) { saveButton.disabled = false; saveButton.textContent = 'Сохранить новую ссылку'; }
+        });
+    });
+}
+
+
+function deleteReference(referenceLinkId, buttonElement) {
+    if (!referenceLinkId) return;
+
+    if (!confirm("Вы уверены, что хотите удалить эту ссылку? Это действие необратимо.")) {
+        return;
+    }
+
+    buttonElement.disabled = true;
+    buttonElement.textContent = 'Удаление...';
+
+    const apiUrl = `/api/papers/referencelinks/${referenceLinkId}/`;
+
+    fetch(apiUrl, {
+        method: 'DELETE',
+        headers: {
+            'X-CSRFToken': getCSRFToken(),
+        },
+    })
+    .then(response => {
+        if (response.status === 204) { // 204 No Content - успешное удаление
+            return { ok: true, data: { message: "Ссылка успешно удалена." } };
+        }
+        // Если есть тело ответа с ошибкой
+        return response.json().then(data => ({ ok: false, status_code: response.status, data }));
+    })
+    .then(({ ok, status_code, data }) => {
+        if (ok) {
+            addNotificationToDetail({ payload: { status: 'SUCCESS', message: data.message }});
+
+            // Динамически удаляем HTML элемент ссылки со страницы
+            const liElementToRemove = buttonElement.closest('li'); // Находим родительский <li>
+            if (liElementToRemove) {
+                liElementToRemove.remove();
+            }
+            // Перезагрузка - более простой вариант, если возникают сложности с динамическим обновлением
+            // window.location.reload();
+        } else {
+            addNotificationToDetail({ payload: { status: 'FAILURE', message: `Ошибка удаления (${status_code}): ${data.detail || JSON.stringify(data)}` }});
+            buttonElement.disabled = false;
+            buttonElement.textContent = 'Удалить';
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка при удалении ссылки:', error);
+        addNotificationToDetail({ payload: { status: 'FAILURE', message: `Сетевая ошибка: ${error.message}` }});
+        buttonElement.disabled = false;
+        buttonElement.textContent = 'Удалить';
+    });
+}
+
+
+
+// закрытие модального окна при клике вне его
+window.addEventListener('click', function(event) {
+    if (addReferenceModal && event.target == addReferenceModal) {
+        closeAddReferenceModal();
+    }
+
+    // Закрытие модального окна создания сегмента при клике вне его
+    if (segmentCreationModal && event.target == segmentCreationModal) {
+        closeSegmentCreationModal();
+    }
+
+    if (addSectionModal && event.target == addSectionModal) {
+        closeAddSectionModal();
+    }
+    // ... (обработка для других модальных окон, если нужно) ...
+});
+
+/*
+// Закрытие модального окна создания сегмента при клике вне его
+window.addEventListener('click', function(event) {
+    if (segmentCreationModal && event.target == segmentCreationModal) {
+        closeSegmentCreationModal();
+    }
+    // ... (обработка для других модальных окон, если нужно) ...
+});
+*/
+
+/*
+// Слушатели для закрытия модальных окон при клике вне (остаются или адаптируются)
+window.addEventListener('click', function(event) {
+    if (addSectionModal && event.target == addSectionModal) {
+        closeAddSectionModal();
+    }
+    // ... (обработка для editReferenceModal, если он есть) ...
+});
+*/
+
+
+/*
+// Закрытие модального окна добавления секции при клике вне его
+window.addEventListener('click', function(event) {
+    if (event.target == addSectionModal) {
+        closeAddSectionModal();
+    }
+});
+*/
+
+
+</script>
+{% endblock %}

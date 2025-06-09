@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}Добавить статью{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* Копируем те же стили для #notifications-wrapper и #notifications, что и в article_detail.html */
+    #notifications-wrapper {
+        position: -webkit-sticky; position: sticky; top: 0; z-index: 1020;
+        background-color: #f8f9fa;
+        margin-left: -20px; margin-right: -20px; margin-bottom: 20px;
+        border-bottom: 1px solid #dee2e6; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    #notifications {
+        padding: 10px 20px; max-height: 150px; overflow-y: auto;
+    }
+</style>
+{% endblock %}
+
+
+{% block content %}
+<div id="notifications-wrapper">
+    <div id="notifications">
+        <p style="text-align: center; color: #6c757d; margin: 5px 0;">Ожидание уведомлений...</p>
+    </div>
+</div>
+
+<h2>Добавить или обновить статью</h2>
+<p>Введите идентификатор статьи (например, DOI, PMID, arXiv ID) для начала обработки.</p>
+
+<form id="articleProcessForm" style="margin-bottom: 20px;">
+    <div>
+        <label for="identifier_type">Тип идентификатора:</label>
+        <select id="identifier_type" name="type">
+            <option value="DOI" selected>DOI</option>
+            <option value="PMID">PMID</option>
+            <option value="ARXIV">ARXIV ID</option>
+        </select>
+    </div>
+    <div>
+        <label for="identifier_value">Значение идентификатора:</label>
+        <input type="text" id="identifier_value" name="identifier" placeholder="e.g., 10.1038/nature12373" required>
+    </div>
+    <button type="submit">Начать обработку</button>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const notificationsDivSubmit = document.getElementById('notifications'); // Указывает на новый #notifications
+
+    const notificationsDiv = document.getElementById('notifications');
+    const articleProcessForm = document.getElementById('articleProcessForm');
+    const identifierValueInput = document.getElementById('identifier_value');
+    const identifierTypeSelect = document.getElementById('identifier_type');
+    const currentUserId = "{{ user_id }}"; // Получаем из контекста Django
+
+    // --- WebSocket для уведомлений ---
+    let ws_protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    let ws_url = `${ws_protocol}//${window.location.host}/ws/notifications/`;
+    let socket;
+
+    function connectWebSocket() {
+        if (!currentUserId || currentUserId === 'None') {
+            console.warn("Пользователь не аутентифицирован, WebSocket не будет подключен.");
+            notificationsDiv.innerHTML = '<div class="status-WARNING">Вы не аутентифицированы. Уведомления не будут получены.</div>';
+            return;
+        }
+
+        console.log(`Попытка подключения WebSocket к ${ws_url} для пользователя ${currentUserId}`);
+        socket = new WebSocket(ws_url);
+
+        socket.onopen = function(e) {
+            console.log("WebSocket соединение установлено.");
+            addNotification({ payload: { status: 'INFO', message: 'WebSocket соединение установлено.' } });
+        };
+
+        socket.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            console.log("Получено WebSocket сообщение:", data);
+            addNotification(data);
+        };
+
+        socket.onclose = function(event) {
+            console.error('WebSocket соединение закрыто:', event);
+            let reason = "";
+            if (event.reason) { reason = ` Причина: ${event.reason}`; }
+            addNotification({ payload: { status: 'FAILURE', message: `WebSocket соединение закрыто. Код: ${event.code}.${reason}` } });
+            // Попытка переподключения через 5 секунд, если пользователь все еще на странице
+            setTimeout(connectWebSocket, 5000);
+        };
+
+        socket.onerror = function(error) {
+            console.error('WebSocket ошибка:', error);
+            addNotification({ payload: { status: 'FAILURE', message: 'Ошибка WebSocket соединения.' } });
+        };
+    }
+
+    function addNotification(data) { // Это функция для submit_article.html
+        const initialMsgSubmit = notificationsDivSubmit.querySelector('p[style*="text-align: center"]');
+        if (initialMsgSubmit) {
+            initialMsgSubmit.remove();
+        }
+        // ... остальная логика addNotification такая же, как в addNotificationToDetail ...
+        let notificationHtml = `<div class="status-${data.payload?.status || 'INFO'}">`;
+        if (data.type === 'connection_established') {
+            notificationHtml += `<strong>${data.message || data.payload?.message}</strong>`;
+        } else if (data.type === 'task_notification' && data.payload) {
+            const p = data.payload;
+            notificationHtml += `<strong>Задача [${p.task_id || 'N/A'}] для ${p.source_api || 'Источник'} (${p.identifier || 'N/A'})</strong><br>`;
+            notificationHtml += `Статус: ${p.status}<br>`;
+            notificationHtml += `Сообщение: ${p.message}<br>`;
+            if (p.progress_percent !== undefined) { notificationHtml += `Прогресс: ${p.progress_percent}%<br>`; }
+            if (p.article_id) { notificationHtml += `ID статьи: ${p.article_id} (Создана: ${p.created === undefined ? 'N/A' : p.created})<br>`; }
+        } else if (data.payload) {
+            notificationHtml += `<strong>${data.payload.source_api || 'Система'} (${data.payload.identifier || 'N/A'})</strong><br>`;
+            notificationHtml += `Статус: ${data.payload.status}<br>`;
+            notificationHtml += `Сообщение: ${data.payload.message}<br>`;
+            if (data.payload.progress_percent !== undefined) { notificationHtml += `Прогресс: ${data.payload.progress_percent}%<br>`;}
+        } else {
+            notificationHtml += JSON.stringify(data);
+        }
+        notificationHtml += `</div>`;
+        notificationsDivSubmit.insertAdjacentHTML('afterbegin', notificationHtml);
+    }
+    // Подключаем WebSocket при загрузке страницы
+    connectWebSocket();
+
+    // --- Обработка формы ---
+    articleProcessForm.addEventListener('submit', function(event) {
+        event.preventDefault();
+        const identifierValue = identifierValueInput.value.trim();
+        const identifierType = identifierTypeSelect.value;
+
+        if (identifierValue) {
+            addNotification({payload: {status: 'INFO', message: `Отправка запроса на обработку ${identifierType}: ${identifierValue}...`}});
+
+            // Используем API, который вызывает диспетчерскую задачу
+            fetch(`/api/papers/process-article/?identifier=${encodeURIComponent(identifierValue)}&type=${encodeURIComponent(identifierType)}`)
+                .then(response => {
+                    if (!response.ok) {
+                        // Попытка прочитать тело ошибки, если есть
+                        return response.json().then(errData => { throw new Error(`Ошибка сервера: ${response.status}. ${errData.error || JSON.stringify(errData)}`) });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Ответ от API process-article:', data);
+                    if (data.pipeline_task_id) {
+                        addNotification({payload: {status: 'SUCCESS', message: `Конвейер обработки запущен. ID задачи: ${data.pipeline_task_id}`}});
+                    } else {
+                         addNotification({payload: {status: 'FAILURE', message: `Ошибка при запуске конвейера: ${data.error || JSON.stringify(data)}`}});
+                    }
+                })
+                .catch(error => {
+                    console.error('Ошибка при вызове API process-article:', error);
+                    addNotification({payload: {status: 'FAILURE', message: `Ошибка вызова API: ${error.message}`}});
+                });
+        }
+    });
+</script>
+{% endblock %}

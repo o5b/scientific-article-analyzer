@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Приложение для научных статей{% endblock %}</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; }
+        header { background-color: #333; color: white; padding: 1em 0; text-align: center; }
+        nav { background-color: #444; padding: 0.5em; text-align: center; }
+        nav a { color: white; margin: 0 15px; text-decoration: none; }
+        nav a:hover { text-decoration: underline; }
+        .container { width: 80%; margin: 20px auto; padding: 20px; background-color: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2 { color: #333; }
+        .messages { list-style: none; padding: 0; }
+        .messages li.success { background-color: #d4edda; color: #155724; padding: 10px; margin-bottom: 10px; border: 1px solid #c3e6cb; }
+        .messages li.error { background-color: #f8d7da; color: #721c24; padding: 10px; margin-bottom: 10px; border: 1px solid #f5c6cb; }
+        /* Стили для уведомлений WebSocket */
+        #notifications div { border: 1px solid #ccc; padding: 10px; margin-bottom: 5px; border-radius: 5px; font-size: 0.9em; }
+        .status-PIPELINE_START, .status-SUBTASK_QUEUED, .status-SUBTASK_STARTED { background-color: #e0e0e0; }
+        .status-PENDING { background-color: #e0e0e0; }
+        .status-PROGRESS { background-color: #fff0c1; }
+        .status-SUCCESS, .status-PIPELINE_COMPLETE { background-color: #d4edda; color: #155724; }
+        .status-FAILURE, .status-PIPELINE_FAILURE, .status-PIPELINE_ERROR, .status-SUBTASK_FAILURE { background-color: #f8d7da; color: #721c24; }
+        .status-RETRYING, .status-WARNING { background-color: #fcf8e3; color: #8a6d3b; }
+        .status-INFO, .status-NOT_FOUND { background-color: #d1ecf1; color: #0c5460; }
+
+        form p { margin-bottom: 10px; }
+        form label { display: block; margin-bottom: 5px; }
+        form input[type="text"], form input[type="password"], form select {
+            width: calc(100% - 22px); padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px;
+        }
+        form button {
+            background-color: #5cb85c; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer;
+        }
+        form button:hover { background-color: #4cae4c; }
+        .errorlist { color: red; list-style-type: none; padding-left: 0; }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <header>
+        <h1>Научные Статьи AI</h1>
+    </header>
+    <nav>
+        {% if user.is_authenticated %}
+            <a href="{% url 'article_list' %}">Мои статьи</a>
+            <a href="{% url 'submit_article' %}">Добавить статью</a>
+            <span>Привет, {{ user.username }}!</span>
+            <a href="{% url 'logout' %}">Выйти</a>
+        {% else %}
+            <a href="{% url 'login' %}">Войти</a>
+            {% endif %}
+    </nav>
+    <div class="container">
+        {% if messages %}
+            <ul class="messages">
+            {% for message in messages %}
+                <li class="{{ message.tags }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+        {% endif %}
+        {% block content %}
+        {% endblock %}
+    </div>
+    <footer>
+        <p style="text-align:center; color:#777; font-size:0.8em;">&copy; {% now "Y" %} Scientific Papers AI App</p>
+    </footer>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

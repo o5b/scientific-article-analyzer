@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Вход в систему{% endblock %}
+
+{% block content %}
+  <h2>Вход в систему</h2>
+  {% if form.errors %}
+    <p style="color:red;">Ваше имя пользователя и пароль не совпали. Пожалуйста, попробуйте еще раз.</p>
+  {% endif %}
+
+  <form method="post" action="{% url 'login' %}">
+    {% csrf_token %}
+    <p>
+        {{ form.username.label_tag }}
+        {{ form.username }}
+    </p>
+    <p>
+        {{ form.password.label_tag }}
+        {{ form.password }}
+    </p>
+    <button type="submit">Войти</button>
+    <input type="hidden" name="next" value="{{ next }}">
+  </form>
+  {# Ссылка на сброс пароля, если вы настроите его позже #}
+  {# <p><a href="{% url 'password_reset' %}">Забыли пароль?</a></p> #}
+{% endblock %}
