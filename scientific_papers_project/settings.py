@@ -233,5 +233,3 @@ NCBI_API_KEY = os.getenv('NCBI_API_KEY', '')   # PubMed
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
 LLM_PROVIDER_FOR_ANALYSIS = "OpenAI" # или "Anthropic" и т.д.
-
-print(f'********* APP_EMAIL: {APP_EMAIL}, NCBI_API_KEY: {NCBI_API_KEY}, OPENAI_API_KEY: {OPENAI_API_KEY}, SECRET_KEY: {SECRET_KEY}')

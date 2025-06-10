@@ -22,14 +22,14 @@ from .helpers import (
     parse_arxiv_authors,
     parse_pubmed_authors,
     parse_rxiv_authors,
-    extract_text_from_jats_xml,
-    extract_text_from_bioc_json,
+    # extract_text_from_jats_xml,
+    # extract_text_from_bioc_json,
     parse_references_from_jats,
     reconstruct_abstract_from_inverted_index,
     parse_openalex_authors,
     extract_structured_text_from_jats,
-    extract_structured_text_from_bioc,
-    sanitize_for_json_serialization,
+    # extract_structured_text_from_bioc,
+    # sanitize_for_json_serialization,
 )
 
 
@@ -580,7 +580,8 @@ def fetch_article_by_doi_task(self, doi: str,
             if extracted_api_journal_name and (can_fully_overwrite or not article.journal_name):
                 article.journal_name = extracted_api_journal_name
 
-            if not article.doi: article.doi = api_doi_from_response # Убедимся, что DOI установлен
+            if not article.doi:
+                article.doi = api_doi_from_response # Убедимся, что DOI установлен
 
             # Обновление других идентификаторов, если CrossRef их вернул (пример для PMID)
             # CrossRef может возвращать ID других систем в поле 'alternative-id' или через другие поля
@@ -617,58 +618,59 @@ def fetch_article_by_doi_task(self, doi: str,
                 except ReferenceLink.DoesNotExist: pass
                 except Exception as e_ref: send_user_notification(user_id, task_id, query_display_name, 'ERROR', f'Ошибка обновления ref_link: {str(e_ref)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
 
-            if process_references and api_data.get('reference'):
-                send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', 'Обработка списка литературы...', progress_percent=60, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-                references_data = api_data.get('reference', [])
-                processed_ref_count = 0
-                for ref_entry in references_data:
-                    if not isinstance(ref_entry, dict): continue
+            # if process_references and api_data.get('reference'):
+            #     send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', 'Обработка списка литературы...', progress_percent=60, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
+            #     references_data = api_data.get('reference', [])
+            #     processed_ref_count = 0
+            #     for ref_entry in references_data:
+            #         if not isinstance(ref_entry, dict): continue
 
-                    ref_doi_val = ref_entry.get('DOI')
-                    ref_unstructured = ref_entry.get('unstructured')
-                    ref_title = ref_entry.get('article-title') or ref_entry.get('journal-title') # или другие варианты заголовка
-                    ref_year = ref_entry.get('year')
+            #         ref_doi_val = ref_entry.get('DOI')
+            #         ref_unstructured = ref_entry.get('unstructured')
+            #         ref_title = ref_entry.get('article-title') or ref_entry.get('journal-title') # или другие варианты заголовка
+            #         ref_year = ref_entry.get('year')
 
-                    ref_link_defaults = {'raw_reference_text': ref_unstructured}
-                    manual_data = {
-                        'doi_from_source': ref_doi_val, 'title': ref_title, 'year': ref_year,
-                        'author_str': ref_entry.get('author'), 'journal_title': ref_entry.get('journal-title'),
-                        'volume': ref_entry.get('volume'), 'first_page': ref_entry.get('first-page')
-                    }
-                    ref_link_defaults['manual_data_json'] = {k: v for k, v in manual_data.items() if v is not None}
+            #         ref_link_defaults = {'raw_reference_text': ref_unstructured}
+            #         manual_data = {
+            #             'doi_from_source': ref_doi_val, 'title': ref_title, 'year': ref_year,
+            #             'author_str': ref_entry.get('author'), 'journal_title': ref_entry.get('journal-title'),
+            #             'volume': ref_entry.get('volume'), 'first_page': ref_entry.get('first-page')
+            #         }
+            #         ref_link_defaults['manual_data_json'] = {k: v for k, v in manual_data.items() if v is not None}
 
-                    lookup_params = {'source_article': article}
-                    # Для update_or_create нужен надежный уникальный ключ для существующей ссылки
-                    if ref_doi_val:
-                        lookup_params['target_article_doi'] = ref_doi_val.lower()
-                    elif ref_unstructured: # Если нет DOI, но есть текст
-                        lookup_params['raw_reference_text'] = ref_unstructured
-                    elif ref_title: # Если нет даже unstructured, но есть title
-                        lookup_params['raw_reference_text'] = ref_title # Используем title как fallback для raw_reference_text
-                    else: # Если ссылку совсем не идентифицировать, пропускаем
-                        continue
+            #         lookup_params = {'source_article': article}
+            #         # Для update_or_create нужен надежный уникальный ключ для существующей ссылки
+            #         if ref_doi_val:
+            #             lookup_params['target_article_doi'] = ref_doi_val.lower()
+            #         elif ref_unstructured: # Если нет DOI, но есть текст
+            #             lookup_params['raw_reference_text'] = ref_unstructured
+            #         elif ref_title: # Если нет даже unstructured, но есть title
+            #             lookup_params['raw_reference_text'] = ref_title # Используем title как fallback для raw_reference_text
+            #         else: # Если ссылку совсем не идентифицировать, пропускаем
+            #             continue
 
-                    if ref_doi_val:
-                        ref_link_defaults['target_article_doi'] = ref_doi_val.lower()
-                        ref_link_defaults['status'] = ReferenceLink.StatusChoices.DOI_PROVIDED_NEEDS_LOOKUP
-                    else:
-                        ref_link_defaults['status'] = ReferenceLink.StatusChoices.PENDING_DOI_INPUT
+            #         if ref_doi_val:
+            #             ref_link_defaults['target_article_doi'] = ref_doi_val.lower()
+            #             ref_link_defaults['status'] = ReferenceLink.StatusChoices.DOI_PROVIDED_NEEDS_LOOKUP
+            #         else:
+            #             ref_link_defaults['status'] = ReferenceLink.StatusChoices.PENDING_DOI_INPUT
 
-                    ref_obj, ref_created = ReferenceLink.objects.update_or_create(**lookup_params, defaults=ref_link_defaults)
-                    processed_ref_count += 1
+            #         ref_obj, ref_created = ReferenceLink.objects.update_or_create(**lookup_params, defaults=ref_link_defaults)
+            #         processed_ref_count += 1
 
-                    if ref_doi_val:
-                        send_user_notification(user_id, task_id, query_display_name, 'INFO', f'Найдена ссылка {ref_obj.id} с DOI: {ref_doi_val}. Запуск конвейера.', source_api=current_api_name)
-                        process_article_pipeline_task.delay(
-                            identifier_value=ref_doi_val.lower(),
-                            identifier_type='DOI',
-                            user_id=user_id,
-                            originating_reference_link_id=ref_obj.id # Передаем ID этой ReferenceLink
-                        )
-                send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Обработано {processed_ref_count} ссылок.', progress_percent=80, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
+            #         if ref_doi_val:
+            #             send_user_notification(user_id, task_id, query_display_name, 'INFO', f'Найдена ссылка {ref_obj.id} с DOI: {ref_doi_val}. Запуск конвейера.', source_api=current_api_name)
+            #             process_article_pipeline_task.delay(
+            #                 identifier_value=ref_doi_val.lower(),
+            #                 identifier_type='DOI',
+            #                 user_id=user_id,
+            #                 originating_reference_link_id=ref_obj.id # Передаем ID этой ReferenceLink
+            #             )
+            #     send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Обработано {processed_ref_count} ссылок.', progress_percent=80, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
 
             final_message = f'Статья {current_api_name} "{article.title[:30]}..." {"создана" if created else "обновлена"}.'
-            if process_references and api_data.get('reference'): final_message += " Ссылки обработаны."
+            # if process_references and api_data.get('reference'):
+            #     final_message += " Ссылки обработаны."
             send_user_notification(user_id, task_id, query_display_name, 'SUCCESS', final_message, progress_percent=100, article_id=article.id, created=created, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
             return {'status': 'success', 'message': final_message, 'doi': api_doi_from_response, 'article_id': article.id}
 
@@ -865,271 +867,6 @@ def fetch_article_from_arxiv_task(self, arxiv_id_value: str,
         return {'status': 'error', 'message': f'Внутренняя ошибка: {str(e)}', 'identifier': query_display_name}
 
 
-# @shared_task(bind=True, max_retries=3, default_retry_delay=120)
-# def fetch_article_from_europepmc_task(self, identifier_value: str, identifier_type: str = 'DOI',
-#                                       user_id: int = None,
-#                                       originating_reference_link_id: int = None,
-#                                       article_id_to_update: int = None):
-#     task_id = self.request.id
-#     query_display_name = f"{identifier_type.upper()}:{identifier_value}"
-#     current_api_name = settings.API_SOURCE_NAMES['EUROPEPMC']
-
-#     send_user_notification(user_id, task_id, query_display_name, 'PENDING', f'Начинаем обработку {current_api_name}...', progress_percent=0, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#     if not identifier_value:
-#         send_user_notification(user_id, task_id, query_display_name, 'FAILURE', 'Идентификатор не указан.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         return {'status': 'error', 'message': 'Идентификатор не указан.', 'identifier': query_display_name}
-
-#     article_owner = None
-#     if user_id:
-#         try:
-#             article_owner = User.objects.get(id=user_id)
-#         except User.DoesNotExist:
-#             send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'Пользователь ID {user_id} не найден.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#             return {'status': 'error', 'message': f'User with ID {user_id} not found.'}
-
-#     query_string = f"{identifier_type.upper()}:{identifier_value}"
-#     params = {'query': query_string, 'format': 'json', 'resultType': 'core', 'email': YOUR_APP_EMAIL}
-#     api_url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
-
-#     try:
-#         send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Запрос к {api_url}', progress_percent=20, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         response = requests.get(api_url, params=params, timeout=45)
-#         response.raise_for_status()
-#         data = response.json()
-#     except requests.exceptions.RequestException as exc:
-#         send_user_notification(user_id, task_id, query_display_name, 'RETRYING', f'Ошибка сети/API {current_api_name}: {str(exc)}. Повтор...', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         raise self.retry(exc=exc)
-#     except json.JSONDecodeError as json_exc:
-#         send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'Ошибка декодирования JSON от {current_api_name}: {str(json_exc)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         return {'status': 'error', 'message': f'{current_api_name} JSON Decode Error: {str(json_exc)}'}
-
-#     if not data or not data.get('resultList') or not data['resultList'].get('result'):
-#         send_user_notification(user_id, task_id, query_display_name, 'NOT_FOUND', 'Статья не найдена или API вернул пустой результат.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         return {'status': 'not_found', 'message': 'Статья не найдена или API вернул пустой результат.', 'identifier': query_display_name}
-
-#     api_article_data = data['resultList']['result'][0]
-#     send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Данные {current_api_name} получены, обработка...', progress_percent=40, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#     try:
-#         with transaction.atomic():
-#             # Извлечение данных из ответа API EPMC
-#             api_title = api_article_data.get('title')
-#             api_abstract = api_article_data.get('abstractText')
-#             api_doi = api_article_data.get('doi')
-#             if api_doi: api_doi = api_doi.lower()
-#             api_pmid = api_article_data.get('pmid')
-#             api_pmcid = api_article_data.get('pmcid')
-
-#             # # test
-#             # if api_pmcid:
-#             #     time.sleep(1)
-#             #     response_test = requests.get(f'https://www.ebi.ac.uk/europepmc/webservices/rest/{api_pmcid}/fullTextXML', timeout=45)
-#             #     print(f'******** europepmc, api_pmcid: {api_pmcid}, xml: {response_test.text}')
-
-#             api_pub_date_str = api_article_data.get('firstPublicationDate')
-#             api_parsed_date = None
-#             if api_pub_date_str:
-#                 try: api_parsed_date = timezone.datetime.strptime(api_pub_date_str, '%Y-%m-%d').date()
-#                 except ValueError: pass
-
-#             api_journal_name = None
-#             journal_info = api_article_data.get('journalInfo')
-#             if journal_info and isinstance(journal_info, dict):
-#                 journal_details = journal_info.get('journal')
-#                 if journal_details and isinstance(journal_details, dict) and journal_details.get('title'):
-#                     api_journal_name = journal_details['title']
-
-#             api_parsed_authors = parse_europepmc_authors(api_article_data.get('authorList', {}).get('author'))
-
-#             # --- Логика поиска или создания статьи ---
-#             article = None
-#             created = False
-
-#             if article_id_to_update:
-#                 try: article = Article.objects.select_for_update().get(id=article_id_to_update, user=article_owner)
-#                 except Article.DoesNotExist:
-#                     send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Статья ID {article_id_to_update} (для обновления) не найдена/не принадлежит пользователю.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#             if not article and api_doi:
-#                 try: article = Article.objects.select_for_update().get(doi=api_doi)
-#                 except Article.DoesNotExist: pass
-
-#             if not article and api_pmid:
-#                 try: article = Article.objects.select_for_update().get(pubmed_id=api_pmid)
-#                 except Article.DoesNotExist: pass
-
-#             if not article:
-#                 if not article_owner:
-#                     send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'Пользователь не указан для создания новой статьи {current_api_name}.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                     return {'status': 'error', 'message': f'User not specified for new {current_api_name} article.'}
-
-#                 creation_kwargs = {'user': article_owner, 'title': api_title or f"Статья {current_api_name}: {query_display_name}"}
-#                 if api_doi: creation_kwargs['doi'] = api_doi
-#                 elif api_pmid: creation_kwargs['pubmed_id'] = api_pmid
-#                 else:
-#                     send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'{current_api_name} API не вернул DOI или PMID для создания статьи.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                     return {'status': 'error', 'message': f'{current_api_name} API did not return DOI or PMID for creation.'}
-
-#                 # is_user_initiated будет False по умолчанию (из модели), если это ссылка.
-#                 # Если это прямой вызов задачи (не через диспетчер для ссылки), то is_user_initiated должен быть True.
-#                 # Диспетчер уже должен был создать "корневую" статью с is_user_initiated=True.
-#                 if originating_reference_link_id is None and article_id_to_update is None:
-#                     creation_kwargs['is_user_initiated'] = True
-
-#                 article = Article.objects.create(**creation_kwargs)
-#                 created = True
-
-#             if not article:
-#                  send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'Не удалось идентифицировать или создать запись для статьи {current_api_name}.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                  return {'status': 'error', 'message': f'Could not identify or create article entry for {current_api_name}.'}
-
-#             # --- Применение логики приоритетов ---
-#             priority_list = getattr(settings, 'API_SOURCE_OVERALL_PRIORITY', [])
-#             try: current_api_priority = priority_list.index(current_api_name)
-#             except ValueError: current_api_priority = float('inf')
-#             article_primary_source_priority = float('inf')
-#             if article.primary_source_api:
-#                 try: article_primary_source_priority = priority_list.index(article.primary_source_api)
-#                 except ValueError: pass
-#             can_fully_overwrite = (created or not article.primary_source_api or current_api_priority <= article_primary_source_priority)
-
-#             if can_fully_overwrite:
-#                 article.primary_source_api = current_api_name
-
-#             if api_title and (can_fully_overwrite or not article.title): article.title = api_title
-#             if api_abstract and (can_fully_overwrite or not article.abstract): article.abstract = api_abstract
-#             if api_parsed_date and (can_fully_overwrite or not article.publication_date): article.publication_date = api_parsed_date
-#             if api_journal_name and (can_fully_overwrite or not article.journal_name): article.journal_name = api_journal_name
-
-#             if api_doi and not article.doi: article.doi = api_doi
-#             if api_pmid and not article.pubmed_id: article.pubmed_id = api_pmid
-
-#             if api_parsed_authors:
-#                 if can_fully_overwrite or not article.authors.exists():
-#                     article.articleauthororder_set.all().delete()
-#                     for order, author_obj in enumerate(api_parsed_authors):
-#                         ArticleAuthorOrder.objects.create(article=article, author=author_obj, order=order)
-
-#             # --- Обработка полного текста JATS XML ---
-#             extracted_structured_content_from_jats = {}
-#             full_text_xml_content_for_refs = None # Для передачи в parse_references_from_jats
-
-#             if 'fullTextUrlList' in api_article_data and api_article_data['fullTextUrlList']:
-#                 for url_info in api_article_data['fullTextUrlList']['fullTextUrl']:
-#                     if (url_info.get('documentStyle', '').lower() in ['xml', 'pmc xml']) and \
-#                        url_info.get('availabilityCode', '').upper() == 'OA' and url_info.get('url'):
-#                         send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Найден OA XML: {url_info["url"]}. Загрузка...', progress_percent=60, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                         try:
-#                             xml_response = requests.get(url_info['url'], timeout=60, headers={'User-Agent': f'ScientificPapersApp/1.0 ({YOUR_APP_EMAIL})'})
-#                             xml_response.raise_for_status()
-#                             full_text_xml_content_for_refs = xml_response.text # Сохраняем для парсинга ссылок
-
-#                             ArticleContent.objects.update_or_create(
-#                                 article=article, source_api_name=current_api_name, format_type='xml_jats_fulltext',
-#                                 defaults={'content': full_text_xml_content_for_refs}
-#                             )
-#                             extracted_structured_content_from_jats = extract_structured_text_from_jats(full_text_xml_content_for_refs)
-#                             if extracted_structured_content_from_jats:
-#                                 article.structured_content = extracted_structured_content_from_jats
-#                                 send_user_notification(user_id, task_id, query_display_name, 'INFO', 'Структурированный текст из JATS XML извлечен.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                             break
-#                         except Exception as e_jats:
-#                             send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Ошибка при обработке JATS XML от {current_api_name}: {str(e_jats)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#             # Обновление cleaned_text_for_llm на основе structured_content или абстракта
-#             new_cleaned_text_parts = []
-#             if extracted_structured_content_from_jats.get('title'): new_cleaned_text_parts.append(f"--- TITLE ---\n{extracted_structured_content_from_jats['title']}")
-#             if extracted_structured_content_from_jats.get('abstract'): new_cleaned_text_parts.append(f"--- ABSTRACT ---\n{extracted_structured_content_from_jats['abstract']}")
-#             for key in ['introduction', 'methods', 'results', 'discussion', 'conclusion']:
-#                 if extracted_structured_content_from_jats.get(key):
-#                     new_cleaned_text_parts.append(f"\n--- {key.upper()} ---\n{extracted_structured_content_from_jats[key]}")
-#             if extracted_structured_content_from_jats.get('other_sections'):
-#                 for other_sec in extracted_structured_content_from_jats['other_sections']:
-#                     new_cleaned_text_parts.append(f"\n--- {other_sec.get('title', 'OTHER SECTION').upper()} ---\n{other_sec.get('text', '')}")
-#             if not new_cleaned_text_parts and extracted_structured_content_from_jats.get('full_body_fallback'):
-#                 new_cleaned_text_parts.append(extracted_structured_content_from_jats['full_body_fallback'])
-
-#             final_cleaned_text = "\n\n".join(new_cleaned_text_parts).strip()
-#             if not final_cleaned_text and api_abstract: # Если из JATS ничего не извлекли, но есть абстракт от API
-#                 final_cleaned_text = api_abstract
-
-#             if final_cleaned_text and \
-#                (not article.cleaned_text_for_llm or \
-#                 len(final_cleaned_text) > len(article.cleaned_text_for_llm or "") + 100 or \
-#                 (can_fully_overwrite and article.primary_source_api == current_api_name) or \
-#                 (extracted_structured_content_from_jats and not (article.cleaned_text_for_llm or "").strip().startswith("--- ABSTRACT ---"))): # Доп.условие для приоритета полного текста
-#                 article.cleaned_text_for_llm = final_cleaned_text
-
-#             article.save()
-#             send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Статья {current_api_name} сохранена в БД (до ссылок).', progress_percent=80, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#             ArticleContent.objects.update_or_create(
-#                 article=article, source_api_name=current_api_name, format_type='json_metadata',
-#                 defaults={'content': json.dumps(api_article_data)}
-#             )
-
-#             # Обработка ссылок из JATS XML
-#             process_epmc_references_flag = (originating_reference_link_id is None)
-#             if process_epmc_references_flag and full_text_xml_content_for_refs:
-#                 send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', 'Извлечение ссылок из JATS XML EPMC...', progress_percent=85, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                 parsed_references_from_jats = parse_references_from_jats(full_text_xml_content_for_refs)
-#                 processed_jats_ref_count = 0
-#                 if parsed_references_from_jats:
-#                     for ref_entry_jats in parsed_references_from_jats:
-#                         ref_doi_jats = ref_entry_jats.get('doi')
-#                         ref_raw_text_jats = ref_entry_jats.get('raw_text')
-#                         if not (ref_doi_jats or ref_raw_text_jats): continue
-#                         ref_link_defaults = { 'raw_reference_text': ref_raw_text_jats, 'manual_data_json': {k: v for k, v in ref_entry_jats.items() if k != 'doi' and k != 'raw_text' and v is not None} }
-#                         if not ref_link_defaults['manual_data_json']: ref_link_defaults['manual_data_json'] = None
-#                         lookup_params = {'source_article': article}
-#                         if ref_doi_jats:
-#                             lookup_params['target_article_doi'] = ref_doi_jats
-#                             ref_link_defaults['target_article_doi'] = ref_doi_jats
-#                             ref_link_defaults['status'] = ReferenceLink.StatusChoices.DOI_PROVIDED_NEEDS_LOOKUP
-#                         elif ref_raw_text_jats: lookup_params['raw_reference_text'] = ref_raw_text_jats; ref_link_defaults['status'] = ReferenceLink.StatusChoices.PENDING_DOI_INPUT
-#                         else: continue
-#                         ref_obj, ref_created = ReferenceLink.objects.update_or_create(**lookup_params, defaults=ref_link_defaults)
-#                         processed_jats_ref_count +=1
-#                         if ref_doi_jats:
-#                             process_article_pipeline_task.delay(identifier_value=ref_doi_jats, identifier_type='DOI', user_id=user_id, originating_reference_link_id=ref_obj.id)
-#                     send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'EPMC JATS: Обработано {processed_jats_ref_count} ссылок.', progress_percent=90, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#             if originating_reference_link_id and article:
-#                 try:
-#                     ref_link_to_resolve = ReferenceLink.objects.get(id=originating_reference_link_id, source_article__user=article_owner)
-#                     ref_link_to_resolve.resolved_article = article
-#                     ref_link_to_resolve.status = ReferenceLink.StatusChoices.ARTICLE_LINKED
-#                     ref_link_to_resolve.save(update_fields=['resolved_article', 'status', 'updated_at'])
-#                     send_user_notification(user_id, task_id, query_display_name, 'INFO', f'Ссылка ID {ref_link_to_resolve.id} связана со статьей {current_api_name}.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                 except ReferenceLink.DoesNotExist: pass
-#                 except Exception as e_ref: send_user_notification(user_id, task_id, query_display_name, 'ERROR', f'Ошибка обновления ref_link для {current_api_name}: {str(e_ref)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#             # Если был получен полный текст из PMC, запускаем задачу для его анализа и связывания
-#             if full_text_xml_content_for_refs:
-#                 # Мы передаем ID статьи и ID пользователя
-#                 process_full_text_and_create_segments_task.delay(
-#                     article_id=article.id,
-#                     user_id=user_id
-#                 )
-#                 send_user_notification(user_id, task_id, query_display_name, 'INFO', 'Поставлена задача на автоматическое связывание текста и ссылок.', source_api=current_api_name)
-
-#             final_message = f'Статья {current_api_name} "{article.title[:30]}..." {"создана" if created else "обновлена"}.'
-#             if process_epmc_references_flag and parsed_references_from_jats: final_message += " Ссылки из JATS обработаны."
-#             send_user_notification(user_id, task_id, query_display_name, 'SUCCESS', final_message, progress_percent=100, article_id=article.id, created=created, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#             return {'status': 'success', 'message': final_message, 'identifier': query_display_name, 'article_id': article.id}
-
-#     except db_utils.OperationalError as exc_db:
-#         send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'Операционная ошибка БД ({current_api_name}): {str(exc_db)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         if 'database is locked' in str(exc_db).lower(): raise self.retry(exc=exc_db, countdown=15 + self.request.retries * 10)
-#         return {'status': 'error', 'message': f'DB OperationalError: {str(exc_db)}'}
-#     except Exception as e:
-#         error_message_for_user = f'Внутренняя ошибка {current_api_name}: {type(e).__name__} - {str(e)}'
-#         self.update_state(state='FAILURE', meta={'identifier': query_display_name, 'error': error_message_for_user, 'traceback': self.request.exc_info if hasattr(self.request, 'exc_info') else str(e)})
-#         send_user_notification(user_id, task_id, query_display_name, 'FAILURE', error_message_for_user, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         return {'status': 'error', 'message': f'Внутренняя ошибка: {str(e)}', 'identifier': query_display_name}
-
-
 @shared_task(bind=True, max_retries=3, default_retry_delay=120)
 def fetch_article_from_europepmc_task(self, identifier_value: str, identifier_type: str = 'DOI',
                                       user_id: int = None,
@@ -1152,10 +889,6 @@ def fetch_article_from_europepmc_task(self, identifier_value: str, identifier_ty
         except User.DoesNotExist:
             send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'Пользователь ID {user_id} не найден.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
             return {'status': 'error', 'message': f'User with ID {user_id} not found.'}
-
-    # query_string = f"{identifier_type.upper()}:{identifier_value}"
-    # params = {'query': query_string, 'format': 'json', 'resultType': 'core', 'email': YOUR_APP_EMAIL}
-    # api_url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
 
     # Запрос к API поиска для получения метаданных и PMCID
     query_string = f"{identifier_type.upper()}:{identifier_value}"
@@ -1181,20 +914,22 @@ def fetch_article_from_europepmc_task(self, identifier_value: str, identifier_ty
     api_article_data = data['resultList']['result'][0]
     send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', 'Метаданные получены, обработка...', progress_percent=40, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
 
-    # ... (код парсинга api_article_data в переменные api_title, api_abstract, api_doi, api_pmid, api_pmcid и т.д.) ...
     # Извлечение данных из ответа API EPMC
     api_title = api_article_data.get('title')
     api_abstract = api_article_data.get('abstractText')
     api_doi = api_article_data.get('doi')
-    if api_doi: api_doi = api_doi.lower()
+    if api_doi:
+        api_doi = api_doi.lower()
     api_pmid = api_article_data.get('pmid')
     api_pmcid = api_article_data.get('pmcid')
 
     api_pub_date_str = api_article_data.get('firstPublicationDate')
     api_parsed_date = None
     if api_pub_date_str:
-        try: api_parsed_date = timezone.datetime.strptime(api_pub_date_str, '%Y-%m-%d').date()
-        except ValueError: pass
+        try:
+            api_parsed_date = timezone.datetime.strptime(api_pub_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            pass
 
     api_journal_name = None
     journal_info = api_article_data.get('journalInfo')
@@ -1216,6 +951,7 @@ def fetch_article_from_europepmc_task(self, identifier_value: str, identifier_ty
             full_text_response = requests.get(full_text_url, timeout=90, headers={'User-Agent': f'ScientificPapersApp/1.0 ({YOUR_APP_EMAIL})'})
             if full_text_response.status_code == 200:
                 full_text_xml_content = full_text_response.text
+                print(f'******* EUROPEPMC**** pmcid_for_url: {pmcid_for_url}, full_text_xml_content: {full_text_xml_content}')
                 send_user_notification(user_id, task_id, query_display_name, 'INFO', 'Полный текст JATS XML успешно получен из Europe PMC.', source_api=current_api_name)
             else:
                 send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Не удалось получить полный текст из Europe PMC для {pmcid_for_url} (статус: {full_text_response.status_code}).', source_api=current_api_name)
@@ -1237,12 +973,14 @@ def fetch_article_from_europepmc_task(self, identifier_value: str, identifier_ty
             if not article and api_doi:
                 try:
                     article = Article.objects.select_for_update().get(doi=api_doi)
-                except Article.DoesNotExist: pass
+                except Article.DoesNotExist:
+                    pass
 
             if not article and api_pmid:
                 try:
                     article = Article.objects.select_for_update().get(pubmed_id=api_pmid)
-                except Article.DoesNotExist: pass
+                except Article.DoesNotExist:
+                    pass
 
             if not article:
                 if not article_owner:
@@ -1250,8 +988,11 @@ def fetch_article_from_europepmc_task(self, identifier_value: str, identifier_ty
                     return {'status': 'error', 'message': f'User not specified for new {current_api_name} article.'}
 
                 creation_kwargs = {'user': article_owner, 'title': api_title or f"Статья {current_api_name}: {query_display_name}"}
-                if api_doi: creation_kwargs['doi'] = api_doi
-                elif api_pmid: creation_kwargs['pubmed_id'] = api_pmid
+
+                if api_doi:
+                    creation_kwargs['doi'] = api_doi
+                elif api_pmid:
+                    creation_kwargs['pubmed_id'] = api_pmid
                 else:
                     send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'{current_api_name} API не вернул DOI или PMID для создания статьи.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
                     return {'status': 'error', 'message': f'{current_api_name} API did not return DOI or PMID for creation.'}
@@ -1271,25 +1012,32 @@ def fetch_article_from_europepmc_task(self, identifier_value: str, identifier_ty
 
             # --- Применение логики приоритетов ---
             priority_list = getattr(settings, 'API_SOURCE_OVERALL_PRIORITY', [])
-            try: current_api_priority = priority_list.index(current_api_name)
-            except ValueError: current_api_priority = float('inf')
+            try:
+                current_api_priority = priority_list.index(current_api_name)
+            except ValueError:
+                current_api_priority = float('inf')
             article_primary_source_priority = float('inf')
             if article.primary_source_api:
-                try: article_primary_source_priority = priority_list.index(article.primary_source_api)
-                except ValueError: pass
+                try:
+                    article_primary_source_priority = priority_list.index(article.primary_source_api)
+                except ValueError:
+                    pass
             can_fully_overwrite = (created or not article.primary_source_api or current_api_priority <= article_primary_source_priority)
 
             if can_fully_overwrite:
                 article.primary_source_api = current_api_name
-
-            if api_title and (can_fully_overwrite or not article.title): article.title = api_title
-            if api_abstract and (can_fully_overwrite or not article.abstract): article.abstract = api_abstract
-            if api_parsed_date and (can_fully_overwrite or not article.publication_date): article.publication_date = api_parsed_date
-            if api_journal_name and (can_fully_overwrite or not article.journal_name): article.journal_name = api_journal_name
-
-            if api_doi and not article.doi: article.doi = api_doi
-            if api_pmid and not article.pubmed_id: article.pubmed_id = api_pmid
-
+            if api_title and (can_fully_overwrite or not article.title):
+                article.title = api_title
+            if api_abstract and (can_fully_overwrite or not article.abstract):
+                article.abstract = api_abstract
+            if api_parsed_date and (can_fully_overwrite or not article.publication_date):
+                article.publication_date = api_parsed_date
+            if api_journal_name and (can_fully_overwrite or not article.journal_name):
+                article.journal_name = api_journal_name
+            if api_doi and not article.doi:
+                article.doi = api_doi
+            if api_pmid and not article.pubmed_id:
+                article.pubmed_id = api_pmid
             if api_parsed_authors:
                 if can_fully_overwrite or not article.authors.exists():
                     article.articleauthororder_set.all().delete()
@@ -1332,11 +1080,13 @@ def fetch_article_from_europepmc_task(self, identifier_value: str, identifier_ty
                     ref_link_to_resolve.status = ReferenceLink.StatusChoices.ARTICLE_LINKED
                     ref_link_to_resolve.save(update_fields=['resolved_article', 'status', 'updated_at'])
                     send_user_notification(user_id, task_id, query_display_name, 'INFO', f'Ссылка ID {ref_link_to_resolve.id} связана со статьей {current_api_name}.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-                except ReferenceLink.DoesNotExist: pass
-                except Exception as e_ref: send_user_notification(user_id, task_id, query_display_name, 'ERROR', f'Ошибка обновления ref_link для {current_api_name}: {str(e_ref)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
+                except ReferenceLink.DoesNotExist:
+                    pass
+                except Exception as e_ref:
+                    send_user_notification(user_id, task_id, query_display_name, 'ERROR', f'Ошибка обновления ref_link для {current_api_name}: {str(e_ref)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
 
             # --- ЗАПУСК ЗАДАЧИ СЕГМЕНТАЦИИ И СВЯЗЫВАНИЯ ---
-            if full_text_xml_content:
+            if article.is_user_initiated and full_text_xml_content:  # if full_text_xml_content:
                 process_full_text_and_create_segments_task.delay(
                     article_id=article.id,
                     user_id=user_id
@@ -1344,13 +1094,15 @@ def fetch_article_from_europepmc_task(self, identifier_value: str, identifier_ty
                 send_user_notification(user_id, task_id, query_display_name, 'INFO', 'Поставлена задача на автоматическое связывание текста и ссылок.', source_api=current_api_name)
 
             final_message = f'Статья {current_api_name} "{article.title[:30]}..." {"создана" if created else "обновлена"}.'
-            if full_text_xml_content: final_message += " Получен полный текст, запущена сегментация."
+            if full_text_xml_content:
+                final_message += " Получен полный текст, запущена сегментация."
             send_user_notification(user_id, task_id, query_display_name, 'SUCCESS', final_message, progress_percent=100, article_id=article.id, created=created, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
             return {'status': 'success', 'message': final_message, 'identifier': query_display_name, 'article_id': article.id}
 
     except db_utils.OperationalError as exc_db:
         send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'Операционная ошибка БД ({current_api_name}): {str(exc_db)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-        if 'database is locked' in str(exc_db).lower(): raise self.retry(exc=exc_db, countdown=15 + self.request.retries * 10)
+        if 'database is locked' in str(exc_db).lower():
+            raise self.retry(exc=exc_db, countdown=15 + self.request.retries * 10)
         return {'status': 'error', 'message': f'DB OperationalError: {str(exc_db)}'}
     except Exception as e:
         error_message_for_user = f'Внутренняя ошибка {current_api_name}: {type(e).__name__} - {str(e)}'
@@ -1376,7 +1128,6 @@ def fetch_article_from_s2_task(self, identifier_value: str, identifier_type: str
     # Добавить другие типы, если S2 их поддерживает (например, PMID через префикс 'PMID:')
     elif identifier_type.upper() == 'PMID':
         s2_paper_id_prefix = "PMID:"
-
 
     s2_paper_id_for_api = f"{s2_paper_id_prefix}{identifier_value}"
     query_display_name = s2_paper_id_for_api
@@ -1569,81 +1320,81 @@ def fetch_article_from_s2_task(self, identifier_value: str, identifier_type: str
                 defaults={'content': json.dumps(api_data)}
             )
 
-            # --- ОБРАБОТКА ССЫЛОК (references из S2) ---
-            # Обрабатываем ссылки только если это "корневой" вызов для статьи,
-            # а не обработка статьи, которая сама является ссылкой.
-            process_s2_references_flag = (originating_reference_link_id is None)
+            # # --- ОБРАБОТКА ССЫЛОК (references из S2) ---
+            # # Обрабатываем ссылки только если это "корневой" вызов для статьи,
+            # # а не обработка статьи, которая сама является ссылкой.
+            # process_s2_references_flag = (originating_reference_link_id is None)
 
-            if process_s2_references_flag and 'references' in api_data and api_data['references']:
-                s2_references = api_data.get('references', [])
-                send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Обработка {len(s2_references)} ссылок из S2...', progress_percent=75, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
+            # if process_s2_references_flag and 'references' in api_data and api_data['references']:
+            #     s2_references = api_data.get('references', [])
+            #     send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Обработка {len(s2_references)} ссылок из S2...', progress_percent=75, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
 
-                processed_s2_ref_count = 0
-                for ref_s2_entry in s2_references:
-                    if not isinstance(ref_s2_entry, dict): continue
+            #     processed_s2_ref_count = 0
+            #     for ref_s2_entry in s2_references:
+            #         if not isinstance(ref_s2_entry, dict): continue
 
-                    # S2 API (согласно последней проверке) НЕ возвращает DOI ссылок напрямую в списке references,
-                    # а только paperId, title, year. Если бы DOI был доступен (например, ref_s2_entry.get('doi')),
-                    # мы бы его использовали. Сейчас мы его не ожидаем.
-                    ref_s2_doi_from_data = ref_s2_entry.get('doi') # Проверяем на всякий случай, вдруг API изменился
-                    if ref_s2_doi_from_data: ref_s2_doi_from_data = ref_s2_doi_from_data.lower()
+            #         # S2 API (согласно последней проверке) НЕ возвращает DOI ссылок напрямую в списке references,
+            #         # а только paperId, title, year. Если бы DOI был доступен (например, ref_s2_entry.get('doi')),
+            #         # мы бы его использовали. Сейчас мы его не ожидаем.
+            #         ref_s2_doi_from_data = ref_s2_entry.get('doi') # Проверяем на всякий случай, вдруг API изменился
+            #         if ref_s2_doi_from_data: ref_s2_doi_from_data = ref_s2_doi_from_data.lower()
 
-                    ref_s2_paperid = ref_s2_entry.get('paperId')
-                    ref_s2_title = ref_s2_entry.get('title')
-                    ref_s2_year = ref_s2_entry.get('year')
+            #         ref_s2_paperid = ref_s2_entry.get('paperId')
+            #         ref_s2_title = ref_s2_entry.get('title')
+            #         ref_s2_year = ref_s2_entry.get('year')
 
-                    if not (ref_s2_paperid or ref_s2_title): # Нужен хоть какой-то идентификатор
-                        continue
+            #         if not (ref_s2_paperid or ref_s2_title): # Нужен хоть какой-то идентификатор
+            #             continue
 
-                    ref_link_defaults = {
-                        'manual_data_json': {
-                            's2_paperId': ref_s2_paperid,
-                            'title': ref_s2_title,
-                            'year': ref_s2_year,
-                            'doi_from_s2': ref_s2_doi_from_data # Будет None, если S2 не вернул DOI
-                        },
-                        'raw_reference_text': ref_s2_title or f"S2 Reference (PaperID: {ref_s2_paperid})"
-                    }
+            #         ref_link_defaults = {
+            #             'manual_data_json': {
+            #                 's2_paperId': ref_s2_paperid,
+            #                 'title': ref_s2_title,
+            #                 'year': ref_s2_year,
+            #                 'doi_from_s2': ref_s2_doi_from_data # Будет None, если S2 не вернул DOI
+            #             },
+            #             'raw_reference_text': ref_s2_title or f"S2 Reference (PaperID: {ref_s2_paperid})"
+            #         }
 
-                    lookup_params = {'source_article': article}
-                    # Ключ для update_or_create: если S2 вернул DOI для ссылки, используем его.
-                    # Иначе, используем s2_paperId (если бы мы его хранили уникально для связи) или title.
-                    # Для простоты, если есть DOI, то по нему, иначе по s2_paperId в manual_data_json (но это не для lookup).
-                    # Чтобы избежать дублей, если нет DOI, но есть S2PaperID, можно попробовать найти существующую связь по нему.
-                    # Или, как и в CrossRef, если есть title, используем его как raw_reference_text для lookup.
+            #         lookup_params = {'source_article': article}
+            #         # Ключ для update_or_create: если S2 вернул DOI для ссылки, используем его.
+            #         # Иначе, используем s2_paperId (если бы мы его хранили уникально для связи) или title.
+            #         # Для простоты, если есть DOI, то по нему, иначе по s2_paperId в manual_data_json (но это не для lookup).
+            #         # Чтобы избежать дублей, если нет DOI, но есть S2PaperID, можно попробовать найти существующую связь по нему.
+            #         # Или, как и в CrossRef, если есть title, используем его как raw_reference_text для lookup.
 
-                    if ref_s2_doi_from_data:
-                        lookup_params['target_article_doi'] = ref_s2_doi_from_data
-                        ref_link_defaults['target_article_doi'] = ref_s2_doi_from_data
-                        ref_link_defaults['status'] = ReferenceLink.StatusChoices.DOI_PROVIDED_NEEDS_LOOKUP
-                    elif ref_s2_title: # Если DOI нет, но есть title
-                        lookup_params['raw_reference_text'] = ref_s2_title
-                        ref_link_defaults['status'] = ReferenceLink.StatusChoices.PENDING_DOI_INPUT
-                    elif ref_s2_paperid: # Если нет ни DOI ни title, но есть paperId
-                         lookup_params['raw_reference_text'] = f"S2PaperId:{ref_s2_paperid}"
-                         ref_link_defaults['status'] = ReferenceLink.StatusChoices.PENDING_DOI_INPUT
-                    else:
-                        continue # Недостаточно данных для создания/поиска ссылки
+            #         if ref_s2_doi_from_data:
+            #             lookup_params['target_article_doi'] = ref_s2_doi_from_data
+            #             ref_link_defaults['target_article_doi'] = ref_s2_doi_from_data
+            #             ref_link_defaults['status'] = ReferenceLink.StatusChoices.DOI_PROVIDED_NEEDS_LOOKUP
+            #         elif ref_s2_title: # Если DOI нет, но есть title
+            #             lookup_params['raw_reference_text'] = ref_s2_title
+            #             ref_link_defaults['status'] = ReferenceLink.StatusChoices.PENDING_DOI_INPUT
+            #         elif ref_s2_paperid: # Если нет ни DOI ни title, но есть paperId
+            #              lookup_params['raw_reference_text'] = f"S2PaperId:{ref_s2_paperid}"
+            #              ref_link_defaults['status'] = ReferenceLink.StatusChoices.PENDING_DOI_INPUT
+            #         else:
+            #             continue # Недостаточно данных для создания/поиска ссылки
 
-                    ref_obj, ref_created = ReferenceLink.objects.update_or_create(
-                        **lookup_params,
-                        defaults=ref_link_defaults
-                    )
-                    processed_s2_ref_count += 1
+            #         ref_obj, ref_created = ReferenceLink.objects.update_or_create(
+            #             **lookup_params,
+            #             defaults=ref_link_defaults
+            #         )
+            #         processed_s2_ref_count += 1
 
-                    # Если мы смогли извлечь DOI для ссылки из данных S2
-                    if ref_s2_doi_from_data:
-                        send_user_notification(user_id, task_id, query_display_name, 'INFO', f'S2: Найдена ссылка {ref_obj.id} с DOI: {ref_s2_doi_from_data}. Запуск конвейера.', source_api=current_api_name)
-                        process_article_pipeline_task.delay(
-                            identifier_value=ref_s2_doi_from_data,
-                            identifier_type='DOI',
-                            user_id=user_id,
-                            originating_reference_link_id=ref_obj.id # Передаем ID этой ReferenceLink
-                        )
+            #         # Если мы смогли извлечь DOI для ссылки из данных S2
+            #         if ref_s2_doi_from_data:
+            #             send_user_notification(user_id, task_id, query_display_name, 'INFO', f'S2: Найдена ссылка {ref_obj.id} с DOI: {ref_s2_doi_from_data}. Запуск конвейера.', source_api=current_api_name)
+            #             process_article_pipeline_task.delay(
+            #                 identifier_value=ref_s2_doi_from_data,
+            #                 identifier_type='DOI',
+            #                 user_id=user_id,
+            #                 originating_reference_link_id=ref_obj.id # Передаем ID этой ReferenceLink
+            #             )
 
-                if processed_s2_ref_count > 0:
-                    send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'S2: Обработано {processed_s2_ref_count} ссылок.', progress_percent=85, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-            # --- КОНЕЦ ОБРАБОТКИ ССЫЛОК S2 ---
+            #     if processed_s2_ref_count > 0:
+            #         send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'S2: Обработано {processed_s2_ref_count} ссылок.', progress_percent=85, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
+            # # --- КОНЕЦ ОБРАБОТКИ ССЫЛОК S2 ---
 
             # Обновление ReferenceLink, если текущая задача S2 была вызвана для обработки конкретной ссылки
             if originating_reference_link_id and article:
@@ -1658,335 +1409,22 @@ def fetch_article_from_s2_task(self, identifier_value: str, identifier_type: str
                 except Exception as e_ref: send_user_notification(user_id, task_id, query_display_name, 'ERROR', f'Ошибка обновления ref_link для S2: {str(e_ref)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
 
             final_message = f'Статья {current_api_name} "{article.title[:30]}..." {"создана" if created else "обновлена"}.'
-            if process_s2_references_flag and s2_references: final_message += " Ссылки S2 обработаны."
+            # if process_s2_references_flag and s2_references:
+            #     final_message += " Ссылки S2 обработаны."
             send_user_notification(user_id, task_id, query_display_name, 'SUCCESS', final_message, progress_percent=100, article_id=article.id, created=created, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
             return {'status': 'success', 'message': final_message, 'identifier': query_display_name, 'article_id': article.id}
 
-    # ... (обработка db_utils.OperationalError и других Exception) ...
     except db_utils.OperationalError as exc_db:
-        # ... (код обработки OperationalError)
         send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'Операционная ошибка БД ({current_api_name}): {str(exc_db)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-        if 'database is locked' in str(exc_db).lower(): raise self.retry(exc=exc_db, countdown=15 + self.request.retries * 10)
+        if 'database is locked' in str(exc_db).lower():
+            raise self.retry(exc=exc_db, countdown=15 + self.request.retries * 10)
         return {'status': 'error', 'message': f'DB OperationalError: {str(exc_db)}'}
     except Exception as e:
-        # ... (код обработки общего Exception)
         error_message_for_user = f'Внутренняя ошибка {current_api_name}: {type(e).__name__} - {str(e)}'
         self.update_state(state='FAILURE', meta={'identifier': query_display_name, 'error': error_message_for_user, 'traceback': self.request.exc_info if hasattr(self.request, 'exc_info') else str(e)})
         send_user_notification(user_id, task_id, query_display_name, 'FAILURE', error_message_for_user, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
         return {'status': 'error', 'message': f'Внутренняя ошибка: {str(e)}', 'identifier': query_display_name}
 
-
-# @shared_task(bind=True, max_retries=3, default_retry_delay=120)
-# def fetch_article_from_pubmed_task(self, identifier_value: str, identifier_type: str = 'PMID',
-#                                    user_id: int = None,
-#                                    originating_reference_link_id: int = None,
-#                                    article_id_to_update: int = None):
-#     task_id = self.request.id
-#     original_query_display_name = f"{identifier_type.upper()}:{identifier_value}" # Сохраняем исходный для некоторых логов
-#     current_query_display_name = original_query_display_name # Будет обновлен, если найдем PMID по DOI
-#     current_api_name = settings.API_SOURCE_NAMES['PUBMED']
-
-#     send_user_notification(user_id, task_id, current_query_display_name, 'PENDING', f'Начинаем обработку {current_api_name}...', progress_percent=0, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#     if not identifier_value:
-#         send_user_notification(user_id, task_id, current_query_display_name, 'FAILURE', 'Идентификатор не указан.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         return {'status': 'error', 'message': 'Идентификатор не указан.'}
-
-#     article_owner = None
-#     if user_id:
-#         try:
-#             article_owner = User.objects.get(id=user_id)
-#         except User.DoesNotExist:
-#             send_user_notification(user_id, task_id, current_query_display_name, 'FAILURE', f'Пользователь ID {user_id} не найден.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#             return {'status': 'error', 'message': f'User ID {user_id} not found.'}
-
-#     pmid_to_fetch = None
-#     eutils_base = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
-#     common_params = {'tool': NCBI_TOOL_NAME, 'email': NCBI_ADMIN_EMAIL}
-#     if NCBI_API_KEY:
-#         common_params['api_key'] = NCBI_API_KEY
-
-#     if identifier_type.upper() == 'DOI':
-#         send_user_notification(user_id, task_id, original_query_display_name, 'PROGRESS', f'Поиск PMID для DOI {identifier_value} через ESearch...', progress_percent=10, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         esearch_params = {**common_params, 'db': 'pubmed', 'term': f"{identifier_value}[DOI]", 'retmode': 'json'}
-#         esearch_pmc_params = {**common_params, 'db': 'pmc', 'term': f"{identifier_value}[DOI]", 'retmode': 'json'}
-#         try:
-#             # if not NCBI_API_KEY: time.sleep(0.35)
-#             time.sleep(0.35)
-#             esearch_response = requests.get(f"{eutils_base}esearch.fcgi", params=esearch_params, timeout=30)
-#             esearch_response.raise_for_status()
-#             esearch_data = esearch_response.json()
-#             time.sleep(0.35)
-#             esearch_pmc_response = requests.get(f"{eutils_base}esearch.fcgi", params=esearch_pmc_params, timeout=30)
-#             esearch_pmc_data = esearch_pmc_response.json()
-#             print(f'******** esearch_pubmed_params: {esearch_params}, \nesearch_pubmed_data: {esearch_data}, \nesearch_pmc_params: {esearch_pmc_params}, \nesearch_pmc_data: {esearch_pmc_data}')
-
-#             if esearch_data.get('esearchresult', {}).get('idlist') and len(esearch_data['esearchresult']['idlist']) > 0:
-#                 pmid_to_fetch = esearch_data['esearchresult']['idlist'][0]
-#                 current_query_display_name = f"PMID:{pmid_to_fetch} (найден по DOI:{identifier_value})"
-#                 send_user_notification(user_id, task_id, current_query_display_name, 'PROGRESS', f'PMID {pmid_to_fetch} найден. Запрос EFetch...', progress_percent=20, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#             else:
-#                 send_user_notification(user_id, task_id, original_query_display_name, 'NOT_FOUND', 'PMID не найден для указанного DOI.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                 return {'status': 'not_found', 'message': 'PMID not found for DOI.'}
-#         except requests.exceptions.RequestException as exc:
-#             send_user_notification(user_id, task_id, original_query_display_name, 'RETRYING', f'Ошибка ESearch {current_api_name}: {str(exc)}. Повтор...', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#             raise self.retry(exc=exc)
-#         except json.JSONDecodeError as json_exc:
-#             send_user_notification(user_id, task_id, original_query_display_name, 'FAILURE', f'Ошибка декодирования JSON от ESearch {current_api_name}: {str(json_exc)}.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#             return {'status': 'error', 'message': f'ESearch JSON Decode Error: {str(json_exc)}'}
-#     elif identifier_type.upper() == 'PMID':
-#         pmid_to_fetch = identifier_value
-#     else:
-#         send_user_notification(user_id, task_id, original_query_display_name, 'FAILURE', f'Неподдерживаемый тип идентификатора для {current_api_name}: {identifier_type}.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         return {'status': 'error', 'message': f'Unsupported identifier type for {current_api_name}: {identifier_type}.'}
-
-#     if not pmid_to_fetch:
-#         send_user_notification(user_id, task_id, original_query_display_name, 'FAILURE', 'Не удалось определить PMID для EFetch.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         return {'status': 'error', 'message': 'PMID for EFetch could not be determined.'}
-
-#     esearch_pmc_from_pmid_params = {**common_params, 'db': 'pmc', 'term': f"{pmid_to_fetch}[PMID]", 'retmode': 'json'}
-#     time.sleep(0.35)
-#     esearch_pmc_from_pmid_response = requests.get(f"{eutils_base}esearch.fcgi", params=esearch_pmc_from_pmid_params, timeout=30)
-#     esearch_pmc_from_pmid_data = esearch_pmc_from_pmid_response.json()
-#     print(f'******* esearch_pmc_from_pmid_params: {esearch_pmc_from_pmid_params}, \nesearch_pmc_from_pmid_data: {esearch_pmc_from_pmid_data}')
-
-#     efetch_params = {**common_params, 'db': 'pubmed', 'id': pmid_to_fetch, 'retmode': 'xml', 'rettype': 'abstract'}
-#     # efetch_params = {**common_params, 'db': 'pmc', 'id': pmid_to_fetch}
-#     xml_content_efetch = None
-#     try:
-#         time.sleep(0.35)
-#         send_user_notification(user_id, task_id, current_query_display_name, 'PROGRESS', f'Запрос EFetch {current_api_name} для PMID: {pmid_to_fetch}', progress_percent=25, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         efetch_response = requests.get(f"{eutils_base}efetch.fcgi", params=efetch_params, timeout=45)
-#         efetch_response.raise_for_status()
-#         xml_content_efetch = efetch_response.text
-#     except requests.exceptions.RequestException as exc:
-#         send_user_notification(user_id, task_id, current_query_display_name, 'RETRYING', f'Ошибка EFetch {current_api_name}: {str(exc)}. Повтор...', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         raise self.retry(exc=exc)
-
-#     send_user_notification(user_id, task_id, current_query_display_name, 'PROGRESS', f'Данные {current_api_name} XML получены, парсинг...', progress_percent=40, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#     api_title, api_abstract, api_journal_title, api_doi, api_pmcid = None, None, None, None, None
-#     api_parsed_authors, api_mesh_terms = [], []
-#     api_parsed_publication_date = None
-
-#     try:
-#         root = ET.fromstring(xml_content_efetch)
-#         pubmed_article_node = root.find('.//PubmedArticle')
-#         if pubmed_article_node is None:
-#             send_user_notification(user_id, task_id, current_query_display_name, 'NOT_FOUND', 'Структура PubmedArticle не найдена в XML.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#             return {'status': 'not_found', 'message': 'PubmedArticle structure not found in XML.'}
-#         article_node = pubmed_article_node.find('.//Article')
-#         if article_node is None:
-#             send_user_notification(user_id, task_id, current_query_display_name, 'NOT_FOUND', 'Тег Article не найден в PubmedArticle.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#             return {'status': 'not_found', 'message': 'Article tag not found in PubmedArticle.'}
-
-#         title_el = article_node.find('.//ArticleTitle')
-#         api_title = title_el.text.strip() if title_el is not None and title_el.text else None
-
-#         abstract_text_parts = []
-#         for abst_text_node in article_node.findall('.//AbstractText'):
-#             if abst_text_node.text:
-#                 label = abst_text_node.get('Label')
-#                 if label: abstract_text_parts.append(f"{label.upper()}: {abst_text_node.text.strip()}")
-#                 else: abstract_text_parts.append(abst_text_node.text.strip())
-#         api_abstract = "\n\n".join(abstract_text_parts) if abstract_text_parts else None # Разделяем параграфы абстракта
-
-#         api_parsed_authors = parse_pubmed_authors(article_node.find('.//AuthorList'))
-
-#         journal_node = article_node.find('.//Journal')
-#         if journal_node is not None:
-#             journal_title_el = journal_node.find('./Title')
-#             if journal_title_el is not None and journal_title_el.text:
-#                 api_journal_title = journal_title_el.text.strip()
-
-#         pubdate_node = article_node.find('.//Journal/JournalIssue/PubDate')
-#         if pubdate_node is not None:
-#             year_el, month_el, day_el = pubdate_node.find('./Year'), pubdate_node.find('./Month'), pubdate_node.find('./Day')
-#             if year_el is not None and year_el.text:
-#                 try:
-#                     year = int(year_el.text)
-#                     month_str = month_el.text if month_el is not None and month_el.text else "1"
-#                     day_str = day_el.text if day_el is not None and day_el.text else "1"
-#                     month_map = {'jan':1,'feb':2,'mar':3,'apr':4,'may':5,'jun':6,'jul':7,'aug':8,'sep':9,'oct':10,'nov':11,'dec':12}
-#                     month = int(month_str) if month_str.isdigit() else month_map.get(month_str.lower()[:3], 1)
-#                     api_parsed_publication_date = timezone.datetime(year, month, int(day_str)).date()
-#                 except (ValueError, TypeError): pass
-
-#         i = 0
-#         id_type_test = set()
-#         for aid_node in pubmed_article_node.findall('.//ArticleIdList/ArticleId'):
-#             i += 1
-#             if aid_node.text:
-#                 # print(f"i: {i}, aid_node.get('IdType'): {aid_node.get('IdType')}, aid_node.text: {aid_node.text}")
-#                 id_type_test.add(aid_node.get('IdType'))
-#                 if aid_node.get('IdType') == 'doi':
-#                     api_doi = aid_node.text.strip().lower()
-#                 elif aid_node.get('IdType') == 'pmc':
-#                     api_pmcid = aid_node.text.strip().upper()
-
-#         print(f"******* id_type_test: {id_type_test}")
-
-#         mesh_list_node = pubmed_article_node.find('.//MeshHeadingList')
-#         if mesh_list_node is not None:
-#             for mesh_node in mesh_list_node.findall('./MeshHeading'):
-#                 desc_el = mesh_node.find('./DescriptorName')
-#                 if desc_el is not None and desc_el.text: api_mesh_terms.append(desc_el.text.strip())
-#     except ET.ParseError as xml_exc:
-#         send_user_notification(user_id, task_id, current_query_display_name, 'FAILURE', f'Ошибка парсинга XML от {current_api_name} EFetch: {str(xml_exc)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         return {'status': 'error', 'message': f'{current_api_name} EFetch XML Parse Error: {str(xml_exc)}'}
-
-#     try:
-#         with transaction.atomic():
-#             article = None
-#             created = False
-
-#             if article_id_to_update:
-#                 try: article = Article.objects.select_for_update().get(id=article_id_to_update, user=article_owner)
-#                 except Article.DoesNotExist:
-#                     send_user_notification(user_id, task_id, current_query_display_name, 'WARNING', f'Статья ID {article_id_to_update} (для обновления) не найдена/не принадлежит пользователю.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#             if not article and api_doi:
-#                 try: article = Article.objects.select_for_update().get(doi=api_doi)
-#                 except Article.DoesNotExist: pass
-
-#             if not article and pmid_to_fetch:
-#                 try: article = Article.objects.select_for_update().get(pubmed_id=pmid_to_fetch)
-#                 except Article.DoesNotExist:
-#                     if not article_owner:
-#                         send_user_notification(user_id, task_id, current_query_display_name, 'FAILURE', f'Пользователь не определен для создания новой {current_api_name} статьи.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                         return {'status': 'error', 'message': f'User not determined for new {current_api_name} article.'}
-
-#                     creation_defaults = {'user': article_owner, 'title': api_title or f"Статья {current_api_name}:{pmid_to_fetch}"}
-#                     if api_doi: creation_defaults['doi'] = api_doi
-#                     # is_user_initiated будет False по умолчанию, если это не основной вызов
-#                     if originating_reference_link_id is None and article_id_to_update is None : # Только если это прямой вызов для новой статьи
-#                          creation_defaults['is_user_initiated'] = True
-
-#                     article = Article.objects.create(pubmed_id=pmid_to_fetch, **creation_defaults)
-#                     created = True
-
-#             if not article:
-#                  send_user_notification(user_id, task_id, current_query_display_name, 'FAILURE', f'Не удалось создать/найти запись для {current_api_name} статьи.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                  return {'status': 'error', 'message': f'Failed to create/find article entry for {current_api_name}.'}
-
-#             # Применение логики приоритетов
-#             priority_list = getattr(settings, 'API_SOURCE_OVERALL_PRIORITY', [])
-#             try: current_api_priority = priority_list.index(current_api_name)
-#             except ValueError: current_api_priority = float('inf')
-#             article_primary_source_priority = float('inf')
-#             if article.primary_source_api:
-#                 try: article_primary_source_priority = priority_list.index(article.primary_source_api)
-#                 except ValueError: pass
-#             can_fully_overwrite = (created or not article.primary_source_api or current_api_priority <= article_primary_source_priority)
-
-#             if can_fully_overwrite: article.primary_source_api = current_api_name
-
-#             if api_title and (can_fully_overwrite or not article.title): article.title = api_title
-#             if api_abstract and (can_fully_overwrite or not article.abstract): article.abstract = api_abstract
-#             if api_parsed_publication_date and (can_fully_overwrite or not article.publication_date):
-#                 article.publication_date = api_parsed_publication_date
-#             if api_journal_title and (can_fully_overwrite or not article.journal_name):
-#                 article.journal_name = api_journal_title
-
-#             if api_doi and not article.doi: article.doi = api_doi
-#             if not article.pubmed_id: article.pubmed_id = pmid_to_fetch
-
-#             if api_parsed_authors:
-#                 if can_fully_overwrite or not article.authors.exists():
-#                     article.articleauthororder_set.all().delete()
-#                     for order, author_obj in enumerate(api_parsed_authors):
-#                         ArticleAuthorOrder.objects.create(article=article, author=author_obj, order=order)
-
-#             # Загрузка и обработка BioC JSON
-#             bioc_extracted_text = None
-#             if api_pmcid:
-#                 send_user_notification(user_id, task_id, current_query_display_name, 'PROGRESS', f'Найден PMCID: {api_pmcid}. Попытка BioC JSON...', progress_percent=75, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                 bioc_url = f"https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/{api_pmcid}/unicode"
-#                 try:
-#                     # if not NCBI_API_KEY: time.sleep(0.35)
-#                     time.sleep(0.35)
-#                     bioc_response = requests.get(bioc_url, timeout=60)
-#                     if bioc_response.status_code == 200:
-#                         bioc_data_raw = bioc_response.json()
-#                         sanitized_bioc_data = sanitize_for_json_serialization(bioc_data_raw)
-#                         ArticleContent.objects.update_or_create(
-#                             article=article, source_api_name=current_api_name, format_type='bioc_json_fulltext',
-#                             defaults={'content': json.dumps(sanitized_bioc_data)}
-#                         )
-#                         bioc_extracted_text = extract_structured_text_from_bioc(sanitized_bioc_data).get('full_body_fallback') or \
-#                                             "\n\n".join(filter(None, [
-#                                                 extract_structured_text_from_bioc(sanitized_bioc_data).get('title'),
-#                                                 extract_structured_text_from_bioc(sanitized_bioc_data).get('abstract'),
-#                                                 extract_structured_text_from_bioc(sanitized_bioc_data).get('introduction'),
-#                                                 extract_structured_text_from_bioc(sanitized_bioc_data).get('methods'),
-#                                                 extract_structured_text_from_bioc(sanitized_bioc_data).get('results'),
-#                                                 extract_structured_text_from_bioc(sanitized_bioc_data).get('discussion'),
-#                                                 extract_structured_text_from_bioc(sanitized_bioc_data).get('conclusion'),
-#                                             ])) # Формируем полный текст из секций
-#                         if bioc_extracted_text:
-#                             send_user_notification(user_id, task_id, current_query_display_name, 'INFO', 'Полный текст из BioC JSON успешно извлечен.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                     else: # Ошибки ответа BioC
-#                         send_user_notification(user_id, task_id, current_query_display_name, 'INFO', f'Не удалось загрузить BioC JSON (статус: {bioc_response.status_code}).', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                 except Exception as bioc_e:
-#                     send_user_notification(user_id, task_id, current_query_display_name, 'WARNING', f'Ошибка при обработке BioC JSON: {str(bioc_e)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#             # Обновление cleaned_text_for_llm
-#             text_candidate_for_llm = bioc_extracted_text if bioc_extracted_text else api_abstract
-#             if text_candidate_for_llm and \
-#                (not article.cleaned_text_for_llm or \
-#                 len(text_candidate_for_llm) > len(article.cleaned_text_for_llm or "") + 200 or \
-#                 (can_fully_overwrite and article.primary_source_api == current_api_name) or \
-#                 (bioc_extracted_text and not (article.cleaned_text_for_llm or "").strip().startswith("--- ABSTRACT ---"))):
-#                 article.cleaned_text_for_llm = text_candidate_for_llm
-
-#             # Сохранение ArticleContent для EFetch XML и MeSH
-#             if xml_content_efetch: # Убедимся, что он есть
-#                 ArticleContent.objects.update_or_create(
-#                     article=article, source_api_name=current_api_name, format_type='xml_pubmed_entry',
-#                     defaults={'content': xml_content_efetch}
-#                 )
-#             if api_mesh_terms:
-#                 sanitized_mesh_terms = sanitize_for_json_serialization(api_mesh_terms)
-#                 ArticleContent.objects.update_or_create(
-#                     article=article, source_api_name=current_api_name, format_type='json_mesh_terms',
-#                     defaults={'content': json.dumps(sanitized_mesh_terms)}
-#                 )
-
-#             # Обновление структурированного контента, если извлекли из BioC
-#             if bioc_extracted_text: # Используем факт извлечения текста как индикатор
-#                  structured_data_from_bioc = extract_structured_text_from_bioc(sanitize_for_json_serialization(bioc_data_raw)) # bioc_data_raw должно быть доступно
-#                  if structured_data_from_bioc:
-#                      article.structured_content = structured_data_from_bioc
-
-
-#             article.save()
-#             send_user_notification(user_id, task_id, current_query_display_name, 'PROGRESS', f'Статья {current_api_name} сохранена в БД.', progress_percent=85, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#             if originating_reference_link_id and article:
-#                 try:
-#                     ref_link = ReferenceLink.objects.get(id=originating_reference_link_id, source_article__user=article_owner)
-#                     ref_link.resolved_article = article
-#                     ref_link.status = ReferenceLink.StatusChoices.ARTICLE_LINKED
-#                     ref_link.save(update_fields=['resolved_article', 'status', 'updated_at'])
-#                     send_user_notification(user_id, task_id, current_query_display_name, 'INFO', f'Ссылка ID {ref_link.id} связана со статьей {current_api_name}.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                 except ReferenceLink.DoesNotExist: pass
-#                 except Exception as e_ref: send_user_notification(user_id, task_id, current_query_display_name, 'ERROR', f'Ошибка обновления ref_link для {current_api_name}: {str(e_ref)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#             final_message = f'Статья {current_api_name} "{article.title[:30]}..." {"создана" if created else "обновлена"}.'
-#             send_user_notification(user_id, task_id, current_query_display_name, 'SUCCESS', final_message, progress_percent=100, article_id=article.id, created=created, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#             return {'status': 'success', 'message': final_message, 'identifier': current_query_display_name, 'article_id': article.id}
-
-#     except db_utils.OperationalError as exc_db:
-#         # ... (обработка OperationalError) ...
-#         send_user_notification(user_id, task_id, current_query_display_name, 'FAILURE', f'Операционная ошибка БД ({current_api_name}): {str(exc_db)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         if 'database is locked' in str(exc_db).lower(): raise self.retry(exc=exc_db, countdown=15 + self.request.retries * 10)
-#         return {'status': 'error', 'message': f'DB OperationalError: {str(exc_db)}'}
-#     except Exception as e:
-#         # ... (обработка других Exception) ...
-#         error_message_for_user = f'Внутренняя ошибка {current_api_name}: {type(e).__name__} - {str(e)}'
-#         self.update_state(state='FAILURE', meta={'identifier': current_query_display_name, 'error': error_message_for_user, 'traceback': self.request.exc_info if hasattr(self.request, 'exc_info') else str(e)})
-#         send_user_notification(user_id, task_id, current_query_display_name, 'FAILURE', error_message_for_user, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         return {'status': 'error', 'message': f'Внутренняя ошибка: {str(e)}', 'identifier': current_query_display_name}
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=120)
 def fetch_article_from_pubmed_task(self, identifier_value: str, identifier_type: str = 'PMID',
@@ -2182,11 +1620,13 @@ def fetch_article_from_pubmed_task(self, identifier_value: str, identifier_type:
 
     # --- ЭТАП 2: ПОЛУЧЕНИЕ ПОЛНОГО ТЕКСТА ИЗ PMC (db=pmc), ЕСЛИ ЕСТЬ PMCID ---
     if not api_pmcid and pmcid_to_fetch:
-        api_pmcid = f'PMC{pmcid_to_fetch}'
+        api_pmcid = pmcid_to_fetch
 
     full_text_xml_pmc = None
+
     if api_pmcid:
         send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Найден PMCID: {api_pmcid}. Запрос полного текста...', progress_percent=50, source_api=current_api_name)
+        api_pmcid = api_pmcid if api_pmcid.upper().startswith('PMC') else f"PMC{api_pmcid}"
         pmc_efetch_params = {**common_params, 'db': 'pmc', 'id': api_pmcid, 'retmode': 'xml'} # rettype не нужен, вернет полный XML
         try:
             # if not NCBI_API_KEY: time.sleep(0.35)
@@ -2194,20 +1634,16 @@ def fetch_article_from_pubmed_task(self, identifier_value: str, identifier_type:
             pmc_response = requests.get(f"{eutils_base}efetch.fcgi", params=pmc_efetch_params, timeout=90)
             if pmc_response.status_code == 200:
                 full_text_xml_pmc = pmc_response.text
+                print(f'******** PUBMED *** api_pmcid: {api_pmcid}, \nfull_text_xml_pmc: {full_text_xml_pmc}')
                 send_user_notification(user_id, task_id, query_display_name, 'INFO', 'Полный текст JATS XML успешно получен из PMC.', source_api=current_api_name)
             else:
                 send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Не удалось получить полный текст из PMC для {api_pmcid} (статус: {pmc_response.status_code}).', source_api=current_api_name)
         except Exception as exc:
             send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Ошибка при запросе полного текста из PMC: {exc}', source_api=current_api_name)
 
-        # print(f'******* pmc_efetch_params: {pmc_efetch_params}, \nfull_text_xml_pmc: {full_text_xml_pmc}')
-
     # --- ЭТАП 3: СОХРАНЕНИЕ В БД ---
     try:
         with transaction.atomic():
-            # article, created = Article.objects.select_for_update().get_or_create(
-            #     # ... логика поиска/создания на основе article_id_to_update, api_doi, pmid_to_fetch ...
-            # )
             article = None
             created = False
 
@@ -2235,7 +1671,7 @@ def fetch_article_from_pubmed_task(self, identifier_value: str, identifier_type:
                     if api_doi:
                         creation_defaults['doi'] = api_doi
                     # is_user_initiated будет False по умолчанию, если это не основной вызов
-                    if originating_reference_link_id is None and article_id_to_update is None : # Только если это прямой вызов для новой статьи
+                    if originating_reference_link_id is None and article_id_to_update is None: # Только если это прямой вызов для новой статьи
                          creation_defaults['is_user_initiated'] = True
 
                     article = Article.objects.create(pubmed_id=pmid_to_fetch, **creation_defaults)
@@ -2409,7 +1845,8 @@ def fetch_article_from_pubmed_task(self, identifier_value: str, identifier_type:
                     send_user_notification(user_id, task_id, query_display_name, 'ERROR', f'Ошибка обновления ref_link для {current_api_name}: {str(e_ref)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
 
             # Если был получен полный текст из PMC, запускаем задачу для его анализа и связывания
-            if full_text_xml_pmc:
+            # if full_text_xml_pmc:
+            if article.is_user_initiated and full_text_xml_pmc:
                 # Мы передаем ID статьи и ID пользователя
                 process_full_text_and_create_segments_task.delay(
                     article_id=article.id,
@@ -2436,239 +1873,6 @@ def fetch_article_from_pubmed_task(self, identifier_value: str, identifier_type:
         return {'status': 'error', 'message': f'Внутренняя ошибка: {str(e)}', 'identifier': query_display_name}
 
 
-# @shared_task(bind=True, max_retries=3, default_retry_delay=60)
-# def fetch_preprint_from_rxiv_task(self, doi: str,
-#                                   user_id: int = None,
-#                                   originating_reference_link_id: int = None,
-#                                   article_id_to_update: int = None):
-#     task_id = self.request.id
-#     # DOI должен быть без префикса "DOI:" для этого API в пути
-#     clean_doi_for_query = doi.replace('DOI:', '').strip().lower()
-#     query_display_name = f"DOI:{clean_doi_for_query} (Rxiv)"
-#     current_api_name = settings.API_SOURCE_NAMES['RXIV']
-
-#     send_user_notification(user_id, task_id, query_display_name, 'PENDING', f'Начинаем обработку {current_api_name}...', progress_percent=0, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#     if not clean_doi_for_query:
-#         send_user_notification(user_id, task_id, query_display_name, 'FAILURE', 'DOI не указан.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         return {'status': 'error', 'message': 'DOI не указан.'}
-
-#     servers_to_try = ['biorxiv', 'medrxiv']
-#     api_preprint_data_collection = None # Будет содержать 'collection' из успешного ответа
-#     final_api_url = None
-#     actual_server_name = None
-
-#     for server_name_attempt in servers_to_try:
-#         temp_api_url = f"https://api.biorxiv.org/details/{server_name_attempt}/{clean_doi_for_query}/na/json"
-#         headers = {'User-Agent': f'ScientificPapersApp/1.0 (mailto:{YOUR_APP_EMAIL})'}
-#         send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Попытка запроса к {server_name_attempt.upper()}: {temp_api_url}', progress_percent=10, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#         try:
-#             response = requests.get(temp_api_url, headers=headers, timeout=30)
-#             if response.status_code == 200:
-#                 data = response.json()
-#                 if data and data.get('collection') and isinstance(data['collection'], list) and data['collection']:
-#                     # Проверяем DOI в ответе для большей точности
-#                     # (иногда API может вернуть ближайшее совпадение, если точного нет)
-#                     # Хотя для /details/[server]/[DOI] это маловероятно, но проверка не помешает.
-#                     # Первый элемент коллекции обычно самый свежий или единственный.
-#                     first_result_in_collection = data['collection'][0]
-#                     doi_in_response = first_result_in_collection.get('doi','').lower()
-#                     if doi_in_response == clean_doi_for_query:
-#                         api_preprint_data_collection = data['collection'] # Сохраняем всю коллекцию, если понадобится (но используем первый)
-#                         final_api_url = temp_api_url
-#                         actual_server_name = server_name_attempt
-#                         send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Данные успешно получены с {actual_server_name.upper()}.', progress_percent=20, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                         break
-#                     else:
-#                         send_user_notification(user_id, task_id, query_display_name, 'INFO', f'DOI в ответе {actual_server_name.upper()} ({doi_in_response}) не совпал с запрошенным ({clean_doi_for_query}).', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                 else:
-#                     send_user_notification(user_id, task_id, query_display_name, 'INFO', f'{server_name_attempt.upper()} вернул пустую коллекцию для DOI.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#             elif response.status_code == 404:
-#                 send_user_notification(user_id, task_id, query_display_name, 'INFO', f'Препринт не найден на {server_name_attempt.upper()}.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#             else:
-#                 response.raise_for_status() # Вызовет HTTPError для других кодов ошибок
-#         except requests.exceptions.RequestException as exc:
-#             send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Ошибка сети/API {server_name_attempt.upper()}: {str(exc)}.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#             if server_name_attempt == servers_to_try[-1]: # Если это последняя попытка
-#                 raise self.retry(exc=exc) # Повторяем задачу целиком
-#             time.sleep(1) # Пауза перед попыткой следующего сервера
-#         except json.JSONDecodeError as json_exc:
-#             send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Ошибка декодирования JSON от {server_name_attempt.upper()}: {str(json_exc)}.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#             if server_name_attempt == servers_to_try[-1]:
-#                  return {'status': 'error', 'message': f'{server_name_attempt.upper()} JSON Decode Error: {str(json_exc)}'}
-#             time.sleep(1)
-#         except Exception as e_inner:
-#             send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Неожиданная ошибка при запросе к {server_name_attempt.upper()}: {str(e_inner)}.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#             if server_name_attempt == servers_to_try[-1]:
-#                  return {'status': 'error', 'message': f'Unexpected error during {server_name_attempt.upper()} request: {str(e_inner)}'}
-#             time.sleep(1)
-
-#     if not api_preprint_data_collection:
-#         send_user_notification(user_id, task_id, query_display_name, 'NOT_FOUND', f'Препринт не найден ни на одном из Rxiv серверов ({", ".join(servers_to_try)}).', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         return {'status': 'not_found', 'message': 'Preprint not found on Rxiv servers.'}
-
-#     # Используем данные первого (и обычно единственного релевантного) элемента коллекции
-#     api_data = api_preprint_data_collection[0]
-#     send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Данные {current_api_name} ({actual_server_name}) получены, обработка...', progress_percent=40, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#     try:
-#         with transaction.atomic():
-#             article_owner = None
-#             if user_id:
-#                 try: article_owner = User.objects.get(id=user_id)
-#                 except User.DoesNotExist:
-#                     send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'Пользователь ID {user_id} не найден.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                     return {'status': 'error', 'message': f'User with ID {user_id} not found.'}
-
-#             # Извлечение данных из ответа API Rxiv
-#             api_doi_from_rxiv = api_data.get('doi', clean_doi_for_query).lower() # Используем исходный DOI, если API его не вернул
-#             api_title = api_data.get('title')
-#             api_abstract = api_data.get('abstract')
-#             api_date_str = api_data.get('date') # Дата постинга
-#             api_parsed_date = None
-#             if api_date_str:
-#                 try: api_parsed_date = timezone.datetime.strptime(api_date_str, '%Y-%m-%d').date()
-#                 except ValueError: pass
-
-#             api_server_name_from_data = api_data.get('server', actual_server_name)
-#             api_category = api_data.get('category')
-#             api_journal_name_construct = f"{api_server_name_from_data.upper()} ({api_category or 'N/A'})" if api_server_name_from_data else None
-
-#             api_parsed_authors = parse_rxiv_authors(api_data.get('authors'))
-#             api_jats_xml_url = api_data.get('jatsxml')
-
-#             # --- Логика поиска или создания статьи ---
-#             article = None
-#             created = False
-
-#             if article_id_to_update:
-#                 try: article = Article.objects.select_for_update().get(id=article_id_to_update, user=article_owner)
-#                 except Article.DoesNotExist:
-#                     send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Статья ID {article_id_to_update} (для обновления) не найдена/не принадлежит пользователю.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#             if not article: # Если не нашли по ID или ID не был передан
-#                 try: article = Article.objects.select_for_update().get(doi=api_doi_from_rxiv)
-#                 except Article.DoesNotExist:
-#                     if not article_owner:
-#                         send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'Пользователь не указан для создания новой {current_api_name} статьи.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                         return {'status': 'error', 'message': f'User not specified for new {current_api_name} article.'}
-#                     article = Article.objects.create(doi=api_doi_from_rxiv, user=article_owner, title=api_title or f"Препринт {current_api_name}: {api_doi_from_rxiv}")
-#                     created = True
-
-#             if not article:
-#                  send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'Не удалось создать/найти запись для {current_api_name} препринта.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                  return {'status': 'error', 'message': f'Failed to create/find article entry for {current_api_name}.'}
-
-#             # --- Применение логики приоритетов ---
-#             priority_list = getattr(settings, 'API_SOURCE_OVERALL_PRIORITY', [])
-#             try: current_api_priority = priority_list.index(current_api_name)
-#             except ValueError: current_api_priority = float('inf')
-#             article_primary_source_priority = float('inf')
-#             if article.primary_source_api:
-#                 try: article_primary_source_priority = priority_list.index(article.primary_source_api)
-#                 except ValueError: pass
-#             can_fully_overwrite = (created or not article.primary_source_api or current_api_priority <= article_primary_source_priority)
-
-#             if can_fully_overwrite: article.primary_source_api = current_api_name
-
-#             if api_title and (can_fully_overwrite or not article.title): article.title = api_title
-#             if api_abstract and (can_fully_overwrite or not article.abstract): article.abstract = api_abstract
-#             if api_parsed_date and (can_fully_overwrite or not article.publication_date): article.publication_date = api_parsed_date
-#             if api_journal_name_construct and (can_fully_overwrite or not article.journal_name): article.journal_name = api_journal_name_construct
-
-#             if not article.doi: article.doi = api_doi_from_rxiv # Убедимся, что DOI сохранен
-
-#             if api_parsed_authors:
-#                 if can_fully_overwrite or not article.authors.exists():
-#                     article.articleauthororder_set.all().delete()
-#                     for order, author_obj in enumerate(api_parsed_authors):
-#                         ArticleAuthorOrder.objects.create(article=article, author=author_obj, order=order)
-
-#             # --- Загрузка и обработка JATS XML, если есть ссылка ---
-#             extracted_text_from_jats = None
-#             if api_jats_xml_url:
-#                 send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Найден JATS XML Rxiv: {api_jats_xml_url}. Загрузка...', progress_percent=60, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                 try:
-#                     jats_response = requests.get(api_jats_xml_url, timeout=60, headers=headers) # Используем те же headers
-#                     jats_response.raise_for_status()
-#                     jats_xml_content = jats_response.text
-#                     ArticleContent.objects.update_or_create(
-#                         article=article, source_api_name=current_api_name, format_type='rxiv_jats_xml_fulltext',
-#                         defaults={'content': jats_xml_content}
-#                     )
-#                     extracted_text_from_jats = extract_text_from_jats_xml(jats_xml_content, include_abstract=True)
-#                     if extracted_text_from_jats:
-#                         send_user_notification(user_id, task_id, query_display_name, 'INFO', 'Текст из Rxiv JATS XML извлечен.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                 except Exception as e_jats:
-#                     send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Ошибка при обработке JATS XML от Rxiv: {str(e_jats)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#             # Обновление cleaned_text_for_llm
-#             text_candidate_for_llm = extracted_text_from_jats if extracted_text_from_jats else api_abstract
-#             if text_candidate_for_llm and \
-#                (not article.cleaned_text_for_llm or \
-#                 len(text_candidate_for_llm) > len(article.cleaned_text_for_llm or "") + 200 or \
-#                 (can_fully_overwrite and article.primary_source_api == current_api_name) or \
-#                 (extracted_text_from_jats and not (article.cleaned_text_for_llm or "").strip().startswith("--- ABSTRACT ---"))):
-#                 article.cleaned_text_for_llm = text_candidate_for_llm
-
-#             # Ссылка на PDF
-#             # version_str = api_preprint_data.get('version', '1')
-#             version_str = api_data.get('version', '1')
-#             if api_server_name_from_data and api_doi_from_rxiv:
-#                 api_pdf_link = f"https://{api_server_name_from_data}.org/content/{api_doi_from_rxiv}v{version_str}.full.pdf"
-#                 if api_pdf_link and (not article.best_oa_pdf_url or can_fully_overwrite):
-#                     article.best_oa_pdf_url = api_pdf_link
-#                 ArticleContent.objects.update_or_create(
-#                     article=article, source_api_name=current_api_name, format_type='link_pdf',
-#                     defaults={'content': api_pdf_link}
-#                 )
-
-#             article.save()
-#             send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Препринт {current_api_name} сохранен.', progress_percent=80, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#             ArticleContent.objects.update_or_create(
-#                 article=article, source_api_name=current_api_name, format_type='json_metadata',
-#                 defaults={'content': json.dumps(api_data)} # defaults={'content': json.dumps(api_preprint_data)}
-#             )
-
-#             if originating_reference_link_id and article:
-#                 try:
-#                     ref_link = ReferenceLink.objects.get(id=originating_reference_link_id, source_article__user=article_owner)
-#                     ref_link.resolved_article = article
-#                     ref_link.status = ReferenceLink.StatusChoices.ARTICLE_LINKED
-#                     ref_link.save(update_fields=['resolved_article', 'status', 'updated_at'])
-#                     send_user_notification(user_id, task_id, query_display_name, 'INFO', f'Ссылка ID {ref_link.id} связана с {current_api_name} препринтом.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#                 except ReferenceLink.DoesNotExist: pass
-#                 except Exception as e_ref: send_user_notification(user_id, task_id, query_display_name, 'ERROR', f'Ошибка обновления ref_link для {current_api_name}: {str(e_ref)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-
-#             # Если был получен полный текст из PMC, запускаем задачу для его анализа и связывания
-#             if jats_xml_content:
-#                 # Мы передаем ID статьи и ID пользователя
-#                 process_full_text_and_create_segments_task.delay(
-#                     article_id=article.id,
-#                     user_id=user_id
-#                 )
-#                 send_user_notification(user_id, task_id, query_display_name, 'INFO', 'Поставлена задача на автоматическое связывание текста и ссылок.', source_api=current_api_name)
-
-
-#             final_message = f'Препринт {current_api_name} ({api_server_name_from_data}) "{article.title[:30]}..." {"создана" if created else "обновлена"}.'
-#             send_user_notification(user_id, task_id, query_display_name, 'SUCCESS', final_message, progress_percent=100, article_id=article.id, created=created, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#             return {'status': 'success', 'message': final_message, 'identifier': query_display_name, 'article_id': article.id}
-
-#     except db_utils.OperationalError as exc_db:
-#         if 'database is locked' in str(exc_db).lower():
-#             send_user_notification(user_id, task_id, query_display_name, 'RETRYING', f'База данных временно заблокирована ({current_api_name}), повторная попытка...', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#             raise self.retry(exc=exc_db, countdown=15 + self.request.retries * 10)
-#         else:
-#             send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'Операционная ошибка БД ({current_api_name}): {str(exc_db)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#             return {'status': 'error', 'message': f'DB OperationalError: {str(exc_db)}'}
-#     except Exception as e:
-#         error_message_for_user = f'Внутренняя ошибка {current_api_name}: {type(e).__name__} - {str(e)}'
-#         self.update_state(state='FAILURE', meta={'identifier': query_display_name, 'error': error_message_for_user, 'traceback': self.request.exc_info if hasattr(self.request, 'exc_info') else str(e)})
-#         send_user_notification(user_id, task_id, query_display_name, 'FAILURE', error_message_for_user, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-#         return {'status': 'error', 'message': f'Внутренняя ошибка: {str(e)}', 'identifier': query_display_name}
-
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def fetch_preprint_from_rxiv_task(self, doi: str,
                                   user_id: int = None,
@@ -2684,11 +1888,6 @@ def fetch_preprint_from_rxiv_task(self, doi: str,
     if not clean_doi_for_query:
         send_user_notification(user_id, task_id, query_display_name, 'FAILURE', 'DOI не указан.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
         return {'status': 'error', 'message': 'DOI не указан.'}
-
-    # servers_to_try = ['biorxiv', 'medrxiv']
-    # api_preprint_data_collection = None # Будет содержать 'collection' из успешного ответа
-    # final_api_url = None
-    # actual_server_name = None
 
     # --- Попытка получить данные с серверов bioRxiv/medRxiv ---
     servers_to_try = ['biorxiv', 'medrxiv']
@@ -2783,41 +1982,66 @@ def fetch_preprint_from_rxiv_task(self, doi: str,
             created = False
 
             if article_id_to_update:
-                try: article = Article.objects.select_for_update().get(id=article_id_to_update, user=article_owner)
+                try:
+                    article = Article.objects.select_for_update().get(id=article_id_to_update, user=article_owner)
                 except Article.DoesNotExist:
                     send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Статья ID {article_id_to_update} (для обновления) не найдена/не принадлежит пользователю.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
 
             if not article: # Если не нашли по ID или ID не был передан
-                try: article = Article.objects.select_for_update().get(doi=api_doi_from_rxiv)
+                try:
+                    article = Article.objects.select_for_update().get(doi=api_doi_from_rxiv)
                 except Article.DoesNotExist:
                     if not article_owner:
                         send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'Пользователь не указан для создания новой {current_api_name} статьи.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
                         return {'status': 'error', 'message': f'User not specified for new {current_api_name} article.'}
-                    article = Article.objects.create(doi=api_doi_from_rxiv, user=article_owner, title=api_title or f"Препринт {current_api_name}: {api_doi_from_rxiv}")
+
+                    # article = Article.objects.create(doi=api_doi_from_rxiv, user=article_owner, title=api_title or f"Препринт {current_api_name}: {api_doi_from_rxiv}")
+                    # created = True
+
+                    is_user_initiated = False
+                    if originating_reference_link_id is None and article_id_to_update is None:
+                        is_user_initiated = True
+
+                    article = Article.objects.create(
+                        doi=api_doi_from_rxiv,
+                        user=article_owner,
+                        title=api_title or f"Препринт {current_api_name}: {api_doi_from_rxiv}",
+                        is_user_initiated=is_user_initiated,
+                    )
                     created = True
 
             if not article:
-                 send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'Не удалось создать/найти запись для {current_api_name} препринта.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
-                 return {'status': 'error', 'message': f'Failed to create/find article entry for {current_api_name}.'}
+                send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'Не удалось создать/найти запись для {current_api_name} препринта.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
+                return {'status': 'error', 'message': f'Failed to create/find article entry for {current_api_name}.'}
 
             # --- Применение логики приоритетов ---
             priority_list = getattr(settings, 'API_SOURCE_OVERALL_PRIORITY', [])
-            try: current_api_priority = priority_list.index(current_api_name)
-            except ValueError: current_api_priority = float('inf')
+            try:
+                current_api_priority = priority_list.index(current_api_name)
+            except ValueError:
+                current_api_priority = float('inf')
             article_primary_source_priority = float('inf')
             if article.primary_source_api:
-                try: article_primary_source_priority = priority_list.index(article.primary_source_api)
-                except ValueError: pass
+                try:
+                    article_primary_source_priority = priority_list.index(article.primary_source_api)
+                except ValueError:
+                    pass
+
             can_fully_overwrite = (created or not article.primary_source_api or current_api_priority <= article_primary_source_priority)
 
-            if can_fully_overwrite: article.primary_source_api = current_api_name
+            if can_fully_overwrite:
+                article.primary_source_api = current_api_name
+            if api_title and (can_fully_overwrite or not article.title):
+                article.title = api_title
+            if api_abstract and (can_fully_overwrite or not article.abstract):
+                article.abstract = api_abstract
+            if api_parsed_date and (can_fully_overwrite or not article.publication_date):
+                article.publication_date = api_parsed_date
+            if api_journal_name_construct and (can_fully_overwrite or not article.journal_name):
+                article.journal_name = api_journal_name_construct
 
-            if api_title and (can_fully_overwrite or not article.title): article.title = api_title
-            if api_abstract and (can_fully_overwrite or not article.abstract): article.abstract = api_abstract
-            if api_parsed_date and (can_fully_overwrite or not article.publication_date): article.publication_date = api_parsed_date
-            if api_journal_name_construct and (can_fully_overwrite or not article.journal_name): article.journal_name = api_journal_name_construct
-
-            if not article.doi: article.doi = api_doi_from_rxiv # Убедимся, что DOI сохранен
+            if not article.doi:
+                article.doi = api_doi_from_rxiv # Убедимся, что DOI сохранен
 
             if api_parsed_authors:
                 if can_fully_overwrite or not article.authors.exists():
@@ -2834,6 +2058,7 @@ def fetch_preprint_from_rxiv_task(self, doi: str,
                     jats_response = requests.get(api_jats_xml_url, timeout=60, headers={'User-Agent': f'ScientificPapersApp/1.0 ({YOUR_APP_EMAIL})'})
                     jats_response.raise_for_status()
                     full_text_xml_content = jats_response.text
+                    print(f'****** RXIV **** api_jats_xml_url: {api_jats_xml_url}, full_text_xml_content: {full_text_xml_content}')
                 except Exception as e_jats:
                     send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Ошибка при обработке JATS XML от Rxiv: {str(e_jats)}', source_api=current_api_name)
 
@@ -2886,7 +2111,7 @@ def fetch_preprint_from_rxiv_task(self, doi: str,
                 except Exception as e_ref: send_user_notification(user_id, task_id, query_display_name, 'ERROR', f'Ошибка обновления ref_link для {current_api_name}: {str(e_ref)}', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
 
             # --- ЗАПУСК ЗАДАЧИ СЕГМЕНТАЦИИ И СВЯЗЫВАНИЯ ---
-            if full_text_xml_content:
+            if article.is_user_initiated and full_text_xml_content: # if full_text_xml_content:
                 process_full_text_and_create_segments_task.delay(
                     article_id=article.id,
                     user_id=user_id
@@ -3201,31 +2426,30 @@ def fetch_article_from_openalex_task(self, identifier_value: str, identifier_typ
                 defaults={'content': json.dumps(api_data)}
             )
 
-            # --- Обработка ссылок (referenced_works) ---
-            # На этом этапе мы только сохраняем информацию о них, не загружаем рекурсивно
-            process_oa_references_flag = (originating_reference_link_id is None) # Только для "корневых" статей
-            if process_oa_references_flag and 'referenced_works' in api_data and api_data['referenced_works']:
-                oa_referenced_works_ids = api_data.get('referenced_works', [])
-                send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Обработка {len(oa_referenced_works_ids)} ссылок из OpenAlex (сохранение ID)...', progress_percent=85, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
+            # # --- Обработка ссылок (referenced_works) ---
+            # # На этом этапе мы только сохраняем информацию о них, не загружаем рекурсивно
+            # process_oa_references_flag = (originating_reference_link_id is None) # Только для "корневых" статей
+            # if process_oa_references_flag and 'referenced_works' in api_data and api_data['referenced_works']:
+            #     oa_referenced_works_ids = api_data.get('referenced_works', [])
+            #     send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Обработка {len(oa_referenced_works_ids)} ссылок из OpenAlex (сохранение ID)...', progress_percent=85, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
 
-                for oa_ref_id_url in oa_referenced_works_ids:
-                    if not oa_ref_id_url or not isinstance(oa_ref_id_url, str): continue
-                    # OpenAlex ID обычно в URL: https://openalex.org/W12345
-                    oa_ref_id = oa_ref_id_url.split('/')[-1]
+            #     for oa_ref_id_url in oa_referenced_works_ids:
+            #         if not oa_ref_id_url or not isinstance(oa_ref_id_url, str): continue
+            #         # OpenAlex ID обычно в URL: https://openalex.org/W12345
+            #         oa_ref_id = oa_ref_id_url.split('/')[-1]
 
-                    # Создаем ReferenceLink с информацией, что это OpenAlex ID
-                    # DOI и другие детали для этой ссылки мы пока не знаем
-                    ReferenceLink.objects.update_or_create(
-                        source_article=article,
-                        raw_reference_text=f"OpenAlex ID: {oa_ref_id}", # Как временный текст
-                        defaults={
-                            'manual_data_json': {'openalex_id': oa_ref_id},
-                            'status': ReferenceLink.StatusChoices.PENDING_DOI_INPUT
-                        }
-                    )
+            #         # Создаем ReferenceLink с информацией, что это OpenAlex ID
+            #         # DOI и другие детали для этой ссылки мы пока не знаем
+            #         ReferenceLink.objects.update_or_create(
+            #             source_article=article,
+            #             raw_reference_text=f"OpenAlex ID: {oa_ref_id}", # Как временный текст
+            #             defaults={
+            #                 'manual_data_json': {'openalex_id': oa_ref_id},
+            #                 'status': ReferenceLink.StatusChoices.PENDING_DOI_INPUT
+            #             }
+            #         )
 
             if originating_reference_link_id and article:
-                # ... (стандартный код обновления ReferenceLink) ...
                 try:
                     ref_link = ReferenceLink.objects.get(id=originating_reference_link_id, source_article__user=article_owner)
                     ref_link.resolved_article = article
