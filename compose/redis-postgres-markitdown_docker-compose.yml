@@ -1,8 +1,8 @@
-# docker-compose -f docker-compose.yml up -d
-# docker-compose -f docker-compose.yml down -v
+# docker compose -f redis-postgres-markitdown_docker-compose.yml up -d
+# docker compose -f redis-postgres-markitdown_docker-compose.yml down -v
 # подключиться к контейнеру созданной бд можно командой:
-# docker exec -it scraping_postgres psql --username=scraping --dbname=scraping
-# данные контейнеров храняться в папке ./tmp 
+# docker exec -it article_postgres psql --username=article --dbname=article
+# данные контейнеров храняться в папке ./tmp
 
 
 version: "3.8"
@@ -52,6 +52,34 @@ services:
     volumes:
       - ./tmp/redis:/var/lib/redis
       - ./tmp/redis-config:/usr/local/etc/redis/redis.conf
+
+  markitdown:
+    image: markitdown-api:latest
+    container_name: markitdown-api
+    build:
+      context: ./markitdown
+      dockerfile: Dockerfile
+      args:
+        INSTALL_GIT: "false"
+        USERID: "nobody"
+        GROUPID: "nogroup"
+    ports:
+      - "8181:8181"
+    networks:
+      - article-network
+    environment:
+      - DEBIAN_FRONTEND=noninteractive
+      - EXIFTOOL_PATH=/usr/bin/exiftool
+      - FFMPEG_PATH=/usr/bin/ffmpeg
+    volumes:
+      - ./markitdown/packages:/app/packages
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8181/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
 
 networks:
   article-network:
