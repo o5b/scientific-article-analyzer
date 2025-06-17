@@ -1,5 +1,6 @@
 django
 djangorestframework
+django-cleanup
 celery
 redis
 requests
@@ -12,3 +13,4 @@ psycopg2-binary
 django-admin-sortable2
 openai
 python-dotenv
+pytest-playwright

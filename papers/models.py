@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
-from django.utils.translation import gettext_lazy as _ # Для возможных переводов
+from django.utils.translation import gettext_lazy as _
 
 
 class Author(models.Model):
@@ -59,6 +59,20 @@ class Article(models.Model):
         _("Полный текст добавлен вручную"),
         default=False,
         help_text=_("Указывает, был ли полный текст статьи добавлен пользователем вручную.")
+    )
+
+    pdf_file = models.FileField(
+        upload_to='articles_pdf/',
+        verbose_name=_("PDF файл"),
+        max_length=500,
+        blank=True,
+        null=True,
+    )
+    pdf_text = models.TextField(
+        verbose_name=_("Текст из PDF"),
+        help_text=_("Текстовое содержимое pdf файла полученное из MarkItDown, MarkerPDF или др."),
+        null=True,
+        blank=True,
     )
 
     # --- Источник основной записи ---
@@ -130,8 +144,16 @@ class Article(models.Model):
         """
         if not self.structured_content or not isinstance(self.structured_content, dict):
             # Если нет структурированного контента, используем абстракт (если есть) или оставляем пустым
-            self.cleaned_text_for_llm = self.abstract if self.abstract else ""
-            return
+            # self.cleaned_text_for_llm = self.abstract if self.abstract else ""
+            return None
+
+        # Если только 'title' и/или 'abstract' то не продолжаем
+        structured_content_keys = list(self.structured_content.keys())
+        for key in ['title', 'abstract']:
+            if key in structured_content_keys:
+                structured_content_keys.remove(key)
+        if not structured_content_keys:
+            return None
 
         ordered_keys = ['title', 'abstract', 'introduction', 'methods', 'results', 'discussion', 'conclusion']
         text_parts = []
@@ -140,11 +162,15 @@ class Article(models.Model):
 
         for key in ordered_keys:
             if self.structured_content.get(key):
-                # Убираем дублирование заголовка, если он уже есть в тексте секции
                 section_text = str(self.structured_content[key])
-                # title_marker = f"--- {key.upper()} ---" # Если бы мы добавляли маркеры
+                if key == 'title':
+                    title_marker = f"--- {key.upper()} ---"
+                else:
+                    title_marker = f"\n--- {key.upper()} ---"
+                # Убираем дублирование заголовка, если он уже есть в тексте секции
                 # if not section_text.strip().upper().startswith(title_marker):
                 #    text_parts.append(title_marker)
+                text_parts.append(title_marker)
                 text_parts.append(section_text)
                 processed_keys.add(key)
 
@@ -156,43 +182,41 @@ class Article(models.Model):
                     title = sec_item.get('title', 'OTHER SECTION').upper()
                     text = sec_item.get('text', '')
                     if text:
-                        # text_parts.append(f"\n--- {title} ---")
+                        text_parts.append(f"\n--- {title} ---")
                         text_parts.append(text)
 
         # Добавляем любые другие ключи из structured_content, которые не были обработаны
         # (кроме 'full_body_fallback', который мы используем ниже, если ничего другого нет)
         for key, value in self.structured_content.items():
             if key not in processed_keys and key not in ['other_sections', 'full_body_fallback'] and value:
-                # text_parts.append(f"\n--- {key.upper()} (CUSTOM) ---")
+                text_parts.append(f"\n--- {key.upper()} (CUSTOM) ---")
                 text_parts.append(str(value))
                 processed_keys.add(key)
 
-        if not text_parts and self.structured_content.get('full_body_fallback'):
-            text_parts.append(self.structured_content['full_body_fallback'])
+        # if not text_parts and self.structured_content.get('full_body_fallback'):
+        #     text_parts.append(self.structured_content['full_body_fallback'])
 
         self.cleaned_text_for_llm = "\n\n".join(filter(None, [tp.strip() for tp in text_parts])).strip()
-        if not self.cleaned_text_for_llm and self.abstract: # Если после всего текста нет, а абстракт есть
-            self.cleaned_text_for_llm = self.abstract
-
+        # if not self.cleaned_text_for_llm and self.abstract: # Если после всего текста нет, а абстракт есть
+            # self.cleaned_text_for_llm = self.abstract
 
     def save(self, *args, **kwargs):
         # Автоматически регенерируем cleaned_text_for_llm, если structured_content изменился
-        # или если cleaned_text_for_llm пуст, а structured_content или abstract есть.
+        # или если cleaned_text_for_llm пуст, а structured_content есть.
         # Это можно сделать более избирательно, если отслеживать изменения structured_content.
         # Для простоты, пока будем делать это при каждом save, если structured_content есть.
-        if self.structured_content or (self.abstract and not self.cleaned_text_for_llm):
-             # Проверяем, изменилось ли structured_content (если объект уже в БД)
+        if self.structured_content:
+            # Проверяем, изменилось ли structured_content (если объект уже в БД)
             if self.pk:
                 try:
                     old_version = Article.objects.get(pk=self.pk)
                     if old_version.structured_content != self.structured_content or \
-                       (not self.cleaned_text_for_llm and (self.structured_content or self.abstract)):
-                        self.regenerate_cleaned_text_from_structured()
+                        (not self.cleaned_text_for_llm and self.structured_content):
+                            self.regenerate_cleaned_text_from_structured()
                 except Article.DoesNotExist:
-                     self.regenerate_cleaned_text_from_structured() # Для нового объекта
+                    self.regenerate_cleaned_text_from_structured() # Для нового объекта
             else: # Новый объект
-                 self.regenerate_cleaned_text_from_structured()
-
+                self.regenerate_cleaned_text_from_structured()
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -250,17 +274,16 @@ class ReferenceLink(models.Model):
 
     class StatusChoices(models.TextChoices):
         PENDING_DOI_INPUT = 'pending_doi_input', _('Ожидает ввода/поиска DOI')
-        DOI_LOOKUP_IN_PROGRESS = 'doi_lookup_in_progress', _('Идет поиск DOI для ссылки') # ИЗМЕНЕНО
+        DOI_LOOKUP_IN_PROGRESS = 'doi_lookup_in_progress', _('Идет поиск DOI для ссылки')
         DOI_PROVIDED_NEEDS_LOOKUP = 'doi_provided_needs_lookup', _('DOI найден, ожидает загрузки статьи')
-        ARTICLE_FETCH_IN_PROGRESS = 'article_fetch_in_progress', _('Идет загрузка статьи по DOI') # ИЗМЕНЕНО И ПЕРЕИМЕНОВАНО
+        ARTICLE_FETCH_IN_PROGRESS = 'article_fetch_in_progress', _('Идет загрузка статьи по DOI')
         ARTICLE_LINKED = 'article_linked', _('Статья найдена и связана')
         ARTICLE_NOT_FOUND = 'article_not_found', _('Статья не найдена по DOI')
         MANUAL_ENTRY = 'manual_entry', _('Данные введены вручную')
         MANUAL_METADATA_ONLY = 'manual_metadata_only', _('Метаданные введены вручную (без связи)')
-        ERROR_DOI_LOOKUP = 'error_doi_lookup', _('Ошибка при поиске DOI') # Можно добавить для большей детализации
-        ERROR_ARTICLE_FETCH = 'error_article_fetch', _('Ошибка при загрузке статьи') # Можно добавить
+        ERROR_DOI_LOOKUP = 'error_doi_lookup', _('Ошибка при поиске DOI')
+        ERROR_ARTICLE_FETCH = 'error_article_fetch', _('Ошибка при загрузке статьи')
         ERROR_PROCESSING = 'error_processing', _('Ошибка при обработке')
-        # Заменил ERROR_LOOKUP на более конкретные, если хотите. Или можно оставить общий ERROR_LOOKUP.
 
     source_article = models.ForeignKey(
         Article,

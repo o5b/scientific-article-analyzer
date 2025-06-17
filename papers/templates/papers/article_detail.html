@@ -149,10 +149,59 @@
 
 <h2>{{ article.title|default:"(Заголовок не определен)" }}</h2>
 
+<div class="detail-section metadata">
+    <h3>Основная информация</h3>
+    <dl class="metadata-grid">
+        <dt>Авторы:</dt>
+        <dd>
+            {% for author_order in article.articleauthororder_set.all %}
+                {{ author_order.author.full_name }}{% if not forloop.last %}; {% endif %}
+            {% empty %}
+                Не указаны
+            {% endfor %}
+        </dd>
+        <dt>DOI:</dt><dd>{{ article.doi|default:"-" }}</dd>
+        <dt>PMID:</dt><dd>{{ article.pubmed_id|default:"-" }}</dd>
+        <dt>arXiv ID:</dt><dd>{{ article.arxiv_id|default:"-" }}</dd>
+        <dt>Дата публикации:</dt><dd>{{ article.publication_date|date:"d.m.Y"|default:"-" }}</dd>
+        <dt>Журнал/Источник:</dt><dd>{{ article.journal_name|default:"-" }}</dd>
+        <dt>Источник осн. данных:</dt><dd>{{ article.primary_source_api|upper|default:"-" }}</dd>
+        <dt>PDF OA URL:</dt><dd><a href="{{ article.best_oa_pdf_url }}" target="_blank" rel="noopener noreferrer">{{ article.best_oa_pdf_url }}</a></dd>
+        <dt>PDF файл:</dt><dd>{% if article.pdf_file %}<a href="{{ article.pdf_file.url }}" target="_blank">PDF файл статьи</a>{% endif %}</dd>
+    </dl>
+</div>
+
 <div class="actions" style="margin-bottom:20px;">
     {# <button onclick="reprocessArticle({{ article.id }}, this)">Повторно обработать статью</button> #}
     <button onclick="deleteArticle({{ article.id }}, this)" style="background-color:#d9534f;">Удалить статью</button>
 </div>
+
+{% if contents %}
+    <div class="detail-section raw-contents">
+        <h3>Доступный контент и сырые данные</h3>
+        <ul class="content-list" style="padding-left:0; list-style:none;">
+            {% for content_item in contents %}
+            <li>
+                <strong>{{ content_item.source_api_name|upper }}</strong> - {{ content_item.format_type }}
+                <small>(Загружено: {{ content_item.retrieved_at|date:"d.m.Y H:i" }})</small>
+                {% comment %} {% if content_item.format_type == "json_metadata" or content_item.format_type == "json_oadata" or content_item.format_type == "xml_jats_fulltext" %}
+                    <br><span class="raw-content-toggle" onclick="toggleRawContent(this, 'content-{{ content_item.id }}')">Показать/скрыть данные</span>
+                    <div id="content-{{ content_item.id }}" class="raw-content-data">{% autoescape off %}{{ content_item.content }}{% endautoescape %}</div>
+                {% elif content_item.format_type == "link_openaccess_pdf" %}
+                    <br><a href="{{ content_item.content }}" target="_blank" rel="noopener noreferrer">Ссылка на PDF</a>
+                {% endif %} {% endcomment %}
+
+                {% if content_item.format_type == "link_openaccess_pdf" %}
+                    <br><a href="{{ content_item.content }}" target="_blank" rel="noopener noreferrer">Ссылка на PDF</a>
+                {% else %}
+                    <br><span class="raw-content-toggle" onclick="toggleRawContent(this, 'content-{{ content_item.id }}')">Показать/скрыть данные</span>
+                    <div id="content-{{ content_item.id }}" class="raw-content-data">{% autoescape off %}{{ content_item.content }}{% endautoescape %}</div>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+{% endif %}
 
 {# === КНОПКА СОЗДАНИЯ СЕГМЕНТА (появляется при выделении текста) === #}
 <button type="button" id="createSegmentBtn">Создать сегмент из выделенного</button>
@@ -342,7 +391,7 @@
     {% endif %}
 </div>
 
-
+{% comment %}
 <div class="detail-section metadata"> ... </div>
 {% if article.abstract and not article.structured_content.abstract %} {# Показываем, если нет в структуре #}
 <div class="detail-section abstract"><h3>Аннотация (из метаданных)</h3><p>{{ article.abstract|linebreaksbr }}</p></div>
@@ -353,28 +402,7 @@
 {% endif %}
 {% if contents %} <div class="detail-section raw-contents"> ... </div> {% endif %}
 {% if references_made %} <div class="detail-section references"> ... </div> {% endif %}
-<div id="notifications-wrapper"> <div id="notifications"> ... </div> </div>
-
-
-<div class="detail-section metadata">
-    <h3>Основная информация</h3>
-    <dl class="metadata-grid">
-        <dt>Авторы:</dt>
-        <dd>
-            {% for author_order in article.articleauthororder_set.all %}
-                {{ author_order.author.full_name }}{% if not forloop.last %}; {% endif %}
-            {% empty %}
-                Не указаны
-            {% endfor %}
-        </dd>
-        <dt>DOI:</dt><dd>{{ article.doi|default:"-" }}</dd>
-        <dt>PMID:</dt><dd>{{ article.pubmed_id|default:"-" }}</dd>
-        <dt>arXiv ID:</dt><dd>{{ article.arxiv_id|default:"-" }}</dd>
-        <dt>Дата публикации:</dt><dd>{{ article.publication_date|date:"d.m.Y"|default:"-" }}</dd>
-        <dt>Журнал/Источник:</dt><dd>{{ article.journal_name|default:"-" }}</dd>
-        <dt>Источник осн. данных:</dt><dd>{{ article.primary_source_api|upper|default:"-" }}</dd>
-    </dl>
-</div>
+<div id="notifications-wrapper"> <div id="notifications"> ... </div> </div> {% endcomment %}
 
 {% if article.abstract %}
 <div class="detail-section abstract">
@@ -383,7 +411,7 @@
 </div>
 {% endif %}
 
-<div class="detail-section oa-info">
+{% comment %} <div class="detail-section oa-info">
     <h3>Информация Open Access (Unpaywall)</h3>
     <dl class="metadata-grid">
         <dt>Статус OA:</dt><dd>{{ article.oa_status|default:"Неизвестно" }}</dd>
@@ -394,7 +422,7 @@
             <dt>Ссылка OA:</dt><dd><a href="{{ article.best_oa_url }}" target="_blank" rel="noopener noreferrer">{{ article.best_oa_url }}</a></dd>
         {% endif %}
     </dl>
-</div>
+</div> {% endcomment %}
 
 {% if article.structured_content %}
 <div class="detail-section structured-text">
@@ -403,60 +431,51 @@
         <h4>{{ article.structured_content.title }}</h4>
     {% endif %}
     {% if article.structured_content.abstract %}
-        <div class="content-section"><h5>Аннотация</h5><p>{{ article.structured_content.abstract|linebreaksbr }}</p></div>
+        <div class="content-section"><h5>Abstract (Аннотация)</h5><p>{{ article.structured_content.abstract|linebreaksbr }}</p></div>
     {% endif %}
     {% if article.structured_content.introduction %}
-        <div class="content-section"><h5>Введение</h5><p>{{ article.structured_content.introduction|linebreaksbr }}</p></div>
+        <div class="content-section"><h5>Introduction (Введение)</h5><p>{{ article.structured_content.introduction|linebreaksbr }}</p></div>
     {% endif %}
     {% if article.structured_content.methods %}
-        <div class="content-section"><h5>Методы</h5><p>{{ article.structured_content.methods|linebreaksbr }}</p></div>
+        <div class="content-section"><h5>Methods (Методы)</h5><p>{{ article.structured_content.methods|linebreaksbr }}</p></div>
     {% endif %}
     {% if article.structured_content.results %}
-        <div class="content-section"><h5>Результаты</h5><p>{{ article.structured_content.results|linebreaksbr }}</p></div>
+        <div class="content-section"><h5>Results (Результаты)</h5><p>{{ article.structured_content.results|linebreaksbr }}</p></div>
     {% endif %}
     {% if article.structured_content.discussion %}
-        <div class="content-section"><h5>Обсуждение</h5><p>{{ article.structured_content.discussion|linebreaksbr }}</p></div>
-    {% endif %}
-    {% if article.structured_content.conclusion %}
-        <div class="content-section"><h5>Заключение</h5><p>{{ article.structured_content.conclusion|linebreaksbr }}</p></div>
+        <div class="content-section"><h5>Discussion (Обсуждение)</h5><p>{{ article.structured_content.discussion|linebreaksbr }}</p></div>
     {% endif %}
     {% if article.structured_content.other_sections %}
         {% for sec in article.structured_content.other_sections %}
             <div class="content-section"><h5>{{ sec.title|default:"Дополнительная секция" }}</h5><p>{{ sec.text|linebreaksbr }}</p></div>
         {% endfor %}
     {% endif %}
+    {% if article.structured_content.conclusion %}
+        <div class="content-section"><h5>Conclusion (Заключение)</h5><p>{{ article.structured_content.conclusion|linebreaksbr }}</p></div>
+    {% endif %}
     {% if not article.structured_content.introduction and not article.structured_content.methods and article.structured_content.full_body_fallback %}
          <div class="content-section"><h5>Основной текст (без разделов)</h5><p>{{ article.structured_content.full_body_fallback|linebreaksbr }}</p></div>
     {% endif %}
 </div>
-{% elif article.cleaned_text_for_llm %} {# Если структурированного нет, показываем старый cleaned_text_for_llm #}
-<div class="detail-section full-text">
-    <h3>Очищенный текст (для LLM)</h3>
-    <div style="max-height: 300px; overflow-y: auto; border: 1px solid #eee; padding: 10px; white-space: pre-wrap; background: #fdfdfd;">
-        {{ article.cleaned_text_for_llm|linebreaksbr }}
-    </div>
-</div>
 {% endif %}
 
-{% if contents %}
-<div class="detail-section raw-contents">
-    <h3>Доступный контент и сырые данные</h3>
-    <ul class="content-list" style="padding-left:0; list-style:none;">
-        {% for content_item in contents %}
-        <li>
-            <strong>{{ content_item.source_api_name|upper }}</strong> - {{ content_item.format_type }}
-            <small>(Загружено: {{ content_item.retrieved_at|date:"d.m.Y H:i" }})</small>
-            {% if content_item.format_type == "json_metadata" or content_item.format_type == "json_oadata" or content_item.format_type == "xml_jats_fulltext" %}
-                <br><span class="raw-content-toggle" onclick="toggleRawContent(this, 'content-{{ content_item.id }}')">Показать/скрыть данные</span>
-                <div id="content-{{ content_item.id }}" class="raw-content-data">{% autoescape off %}{{ content_item.content }}{% endautoescape %}</div>
-            {% elif content_item.format_type == "link_openaccess_pdf" %}
-                 <br><a href="{{ content_item.content }}" target="_blank" rel="noopener noreferrer">Ссылка на PDF</a>
-            {% endif %}
-        </li>
-        {% endfor %}
-    </ul>
-</div>
+{% if article.cleaned_text_for_llm %}
+    <div class="detail-section full-text">
+        <h3>Очищенный текст (для LLM)</h3>
+        <div style="max-height: 300px; overflow-y: auto; border: 1px solid #eee; padding: 10px; white-space: pre-wrap; background: #fdfdfd;">
+            {{ article.cleaned_text_for_llm|linebreaksbr }}
+        </div>
+    </div>
 {% endif %}
+
+{% comment %} {% if article.pdf_text %}
+<div class="detail-section full-text">
+    <h3>Текст из PDF файла</h3>
+    <div style="max-height: 300px; overflow-y: auto; border: 1px solid #eee; padding: 10px; white-space: pre-wrap; background: #fdfdfd;">
+        {{ article.pdf_text|linebreaksbr }}
+    </div>
+</div>
+{% endif %} {% endcomment %}
 
 {% if references_made %}
 <div class="detail-section references">
@@ -480,6 +499,14 @@
             </p>
             <p>
                 <strong>Целевой DOI:</strong> {{ ref.target_article_doi|default:"Не найден" }} <br>
+                <strong>PubMed ID:</strong> {{ ref.resolved_article.pubmed_id|default:"Не найден" }} <br>
+                <strong>PubMed Central ID (PMC):</strong> {{ ref.resolved_article.pmc_id|default:"Не найден" }} <br>
+                {% if ref.resolved_article.pdf_file %}
+                    <strong>PDF:</strong><a href="{{ ref.resolved_article.pdf_file.url }}" target="_blank"> Открыть PDF файл статьи</a>
+                {% else %}
+                    <strong>PDF:</strong> Нет PDF файла статьи
+                {% endif %}
+                <br>
                 {% if ref.resolved_article %}
                     <strong>Статус в БД:</strong> Связана со статьей <a href="{% url 'article_detail' ref.resolved_article.pk %}">"{{ ref.resolved_article.title|truncatechars:50 }}"</a>
                 {% else %}

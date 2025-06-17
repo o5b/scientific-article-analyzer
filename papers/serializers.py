@@ -72,9 +72,6 @@ class ArticleContentSerializer(serializers.ModelSerializer):
 class ReferenceLinkSerializer(serializers.ModelSerializer):
     source_article_title = serializers.StringRelatedField(source='source_article.title', read_only=True)
     resolved_article_title = serializers.StringRelatedField(source='resolved_article.title', read_only=True)
-
-    # --- ИЗМЕНЕНИЕ ---
-    # Делаем source_article доступным для записи, чтобы создавать новые ссылки
     source_article = serializers.PrimaryKeyRelatedField(queryset=Article.objects.all())
 
     class Meta:
@@ -132,7 +129,6 @@ class ArticleSerializer(serializers.ModelSerializer):
     article_authors = ArticleAuthorOrderSerializer(source='articleauthororder_set', many=True, required=False)
     contents = ArticleContentSerializer(many=True, read_only=True)
     references_made = ReferenceLinkSerializer(many=True, read_only=True)
-
     # structured_content по умолчанию будет доступен для записи, т.к. это JSONField
     # cleaned_text_for_llm будет только для чтения, т.к. генерируется на бэкенде
 
@@ -143,8 +139,8 @@ class ArticleSerializer(serializers.ModelSerializer):
             'cleaned_text_for_llm', 'is_manually_added_full_text',
             'primary_source_api', 'publication_date', 'journal_name',
             'oa_status', 'best_oa_url', 'best_oa_pdf_url', 'oa_license', # Поля Unpaywall
-            'is_user_initiated', # Наше новое поле
-            'structured_content', # Поле для структурированного текста
+            'is_user_initiated',
+            'structured_content',
             'article_authors',
             'contents', 'references_made',
             'created_at', 'updated_at'
@@ -239,7 +235,6 @@ class AnalyzedSegmentSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'article': {'read_only': True} # Будем устанавливать в perform_create
         }
-
 
     def create(self, validated_data):
         # user устанавливается во ViewSet.perform_create

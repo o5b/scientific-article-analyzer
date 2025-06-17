@@ -1,6 +1,8 @@
 from django.contrib import admin
 from django import forms
+from django.utils.html import mark_safe, format_html
 from adminsortable2.admin import SortableAdminBase, SortableAdminMixin, SortableInlineAdminMixin, SortableStackedInline
+
 from .models import Author, Article, ArticleAuthorOrder, ArticleContent, ReferenceLink, AnalyzedSegment
 
 
@@ -9,8 +11,8 @@ class ArticleAuthorOrderInline(admin.TabularInline):
     Позволяет редактировать порядок авторов прямо на странице статьи.
     """
     model = ArticleAuthorOrder
-    extra = 0 # Количество пустых форм для добавления новых авторов
-    autocomplete_fields = ['author'] # Удобный поиск авторов, если их много
+    extra = 0
+    autocomplete_fields = ['author']
 
 
 class ArticleContentInline(admin.StackedInline):
@@ -81,11 +83,14 @@ class ArticleAdminForm(forms.ModelForm):
 class ArticleAdmin(SortableAdminBase, admin.ModelAdmin):
     list_display = (
         'title',
+        'id',
         'doi',
         'pubmed_id',
-        'pmc_id',
+        'pmc_id_label',
         'arxiv_id',
         'reference_link_inline_count',
+        'is_structured_content',
+        'is_pdf_file',
         'user',
         'primary_source_api',
         'publication_date',
@@ -112,6 +117,9 @@ class ArticleAdmin(SortableAdminBase, admin.ModelAdmin):
         ('Данные для LLM и Ручной Ввод', {
             'fields': ('cleaned_text_for_llm', 'is_manually_added_full_text')
         }),
+        ('PDF Файл', {
+            'fields': ('pdf_file', 'pdf_text')
+        }),
         ('Метаданные Публикации', {
             'fields': ('publication_date', 'journal_name')
         }),
@@ -123,8 +131,23 @@ class ArticleAdmin(SortableAdminBase, admin.ModelAdmin):
 
     def reference_link_inline_count(self, obj):
         return obj.references_made.count()
+    reference_link_inline_count.short_description = 'Ref'
 
-    reference_link_inline_count.short_description = 'References'
+    def is_pdf_file(self, obj):
+        if obj.pdf_file:
+            return format_html('<span style="color: green;">&#10003;</span>')
+        return format_html('<span style="color: red;">&#10007;</span>')
+    is_pdf_file.short_description = 'PDF'
+
+    def is_structured_content(self, obj):
+        if obj.structured_content:
+            return format_html('<span style="color: green;">&#10003;</span>')
+        return format_html('<span style="color: red;">&#10007;</span>')
+    is_structured_content.short_description = 'XML'
+
+    def pmc_id_label(self, obj):
+        return obj.pmc_id
+    pmc_id_label.short_description = 'PMC'
 
 
 @admin.register(AnalyzedSegment)

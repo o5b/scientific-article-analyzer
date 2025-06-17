@@ -1,4 +1,3 @@
-# papers/urls_site.py
 from django.urls import path
 from . import views_site # Создадим этот файл ниже
 

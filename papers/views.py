@@ -3,6 +3,7 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views import View
+from django.db.models import Q
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
@@ -35,7 +36,7 @@ class AuthorViewSet(viewsets.ModelViewSet):
     """
     queryset = Author.objects.all()
     serializer_class = AuthorSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly] # Пример разрешений
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
 
 class ArticleViewSet(viewsets.ModelViewSet):
@@ -158,7 +159,6 @@ class StartArticleProcessingView(View): # Переименовать бы во �
 # Теперь URL может быть: /api/papers/process-article/?identifier=10.1000/xyz123&type=DOI
 
 
-
 class LoadReferencedArticleAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -238,7 +238,6 @@ class FindDoiForReferenceAPIView(APIView):
         # Если его нет, то этот save не нужен, т.к. задача сама обновит статус.
         # reference_link.save(update_fields=['status', 'updated_at'])
 
-
         return Response(
             {"message": "Задача по поиску DOI для ссылки поставлена в очередь.", "task_id": task.id},
             status=status.HTTP_202_ACCEPTED
@@ -279,7 +278,6 @@ class FindAllReferenceDoisAPIView(APIView):
         #     source_article=article,
         #     status__in=eligible_statuses_for_doi_search
         # )
-
 
         if not references_to_process.exists():
             return Response(
@@ -326,8 +324,6 @@ class LoadAllLinkedReferencesAPIView(APIView):
         ]
 
         # Используем Q-объекты для непустого DOI
-        from django.db.models import Q
-
         references_to_load = ReferenceLink.objects.filter(
             Q(target_article_doi__isnull=False) & ~Q(target_article_doi=''), # DOI есть и не пустой
             source_article=article,

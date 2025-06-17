@@ -2,19 +2,24 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 import xml.etree.ElementTree as ET # Для парсинга XML
 import re
+import tempfile
+import logging
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
+
 from .models import Article, Author, ArticleContent, ArticleAuthorOrder, ReferenceLink
+
+
+logger = logging.getLogger(__name__)
 
 # Пространства имен для arXiv Atom XML
 ARXIV_NS = {'atom': 'http://www.w3.org/2005/Atom', 'arxiv': 'http://arxiv.org/schemas/atom'}
 
 
-# --- Хелпер-функции ---
+def send_user_notification(user_id, task_id, identifier_value, status, message, progress_percent=None, article_id=None,
+    created=None, source_api=None, originating_reference_link_id=None, analysis_data=None):
 
-def send_user_notification(user_id, task_id, identifier_value, status, message,
-                           progress_percent=None, article_id=None, created=None,
-                           source_api=None, originating_reference_link_id=None,
-                           analysis_data=None):
-    if not user_id: return
+    if not user_id:
+        return
     channel_layer = get_channel_layer()
     group_name = f"user_{user_id}_notifications"
 
@@ -26,12 +31,15 @@ def send_user_notification(user_id, task_id, identifier_value, status, message,
         'source_api': source_api or 'N/A'
     }
     # Добавляем опциональные поля в payload, только если они переданы
-    if progress_percent is not None: payload['progress_percent'] = progress_percent
-    if article_id is not None: payload['article_id'] = article_id
-    if created is not None: payload['created'] = created
+    if progress_percent is not None:
+        payload['progress_percent'] = progress_percent
+    if article_id is not None:
+        payload['article_id'] = article_id
+    if created is not None:
+        payload['created'] = created
     if originating_reference_link_id is not None:
         payload['originating_reference_link_id'] = originating_reference_link_id
-    if analysis_data is not None: # <--- ДОБАВЛЕНА ЛОГИКА ДЛЯ НОВОГО ПАРАМЕТРА
+    if analysis_data is not None:
         payload['analysis_data'] = analysis_data
 
     async_to_sync(channel_layer.group_send)(group_name, {"type": "send.notification", "payload": payload})
@@ -39,11 +47,14 @@ def send_user_notification(user_id, task_id, identifier_value, status, message,
 
 def parse_crossref_authors(authors_data):
     parsed_authors = []
-    if not authors_data: return parsed_authors
+    if not authors_data:
+        return parsed_authors
     for author_info in authors_data:
         name_parts = []
-        if author_info.get('given'): name_parts.append(author_info['given'])
-        if author_info.get('family'): name_parts.append(author_info['family'])
+        if author_info.get('given'):
+            name_parts.append(author_info['given'])
+        if author_info.get('family'):
+            name_parts.append(author_info['family'])
         full_name = " ".join(name_parts).strip()
         if full_name:
             author, _ = Author.objects.get_or_create(full_name=full_name)
@@ -54,7 +65,8 @@ def parse_crossref_authors(authors_data):
 
 def parse_europepmc_authors(authors_data_list):
     parsed_authors = []
-    if not authors_data_list or not isinstance(authors_data_list, list): return parsed_authors
+    if not authors_data_list or not isinstance(authors_data_list, list):
+        return parsed_authors
     for author_info_wrapper in authors_data_list:
         if isinstance(author_info_wrapper, dict) and 'author' in author_info_wrapper:
             for author_entry in author_info_wrapper['author']:
@@ -68,7 +80,8 @@ def parse_europepmc_authors(authors_data_list):
 
 def parse_s2_authors(authors_data_list):
     parsed_authors = []
-    if not authors_data_list or not isinstance(authors_data_list, list): return parsed_authors
+    if not authors_data_list or not isinstance(authors_data_list, list):
+        return parsed_authors
     for author_info in authors_data_list:
         if isinstance(author_info, dict) and author_info.get('name'):
             full_name = author_info['name'].strip()
@@ -92,7 +105,8 @@ def parse_arxiv_authors(entry_element):
 
 def parse_pubmed_authors(author_list_node):
     parsed_authors = []
-    if author_list_node is None: return parsed_authors
+    if author_list_node is None:
+        return parsed_authors
     for author_node in author_list_node.findall('./Author'):
         last_name_el = author_node.find('./LastName')
         fore_name_el = author_node.find('./ForeName') or author_node.find('./Forename')
@@ -108,13 +122,15 @@ def parse_pubmed_authors(author_list_node):
 
 def parse_rxiv_authors(authors_data_list):
     parsed_authors = []
-    if not authors_data_list or not isinstance(authors_data_list, list): return parsed_authors
+    if not authors_data_list or not isinstance(authors_data_list, list):
+        return parsed_authors
     for author_info in authors_data_list:
         full_name = author_info.get('author_name','').strip()
         if full_name:
             if ',' in full_name:
                 parts = [p.strip() for p in full_name.split(',', 1)]
-                if len(parts) == 2: full_name = f"{parts[1]} {parts[0]}"
+                if len(parts) == 2:
+                    full_name = f"{parts[1]} {parts[0]}"
             author, _ = Author.objects.get_or_create(full_name=full_name)
             parsed_authors.append(author)
     return parsed_authors
@@ -266,8 +282,13 @@ def extract_structured_text_from_jats(xml_string: str) -> dict:
         return {}
 
     sections = {
-        "title": None, "abstract": None, "introduction": None, "methods": None,
-        "results": None, "discussion": None, "conclusion": None,
+        "title": None,
+        "abstract": None,
+        "introduction": None,
+        "methods": None,
+        "results": None,
+        "discussion": None,
+        "conclusion": None,
         "other_sections": [], # Для нераспознанных, но помеченных как <sec>
         "full_body_fallback": None # Если секции не найдены, но есть <body>
     }
@@ -308,7 +329,8 @@ def extract_structured_text_from_jats(xml_string: str) -> dict:
                         current_sec_content_parts.append(paragraph_text)
 
                 section_content = "\n\n".join(current_sec_content_parts)
-                if not section_content: continue # Пропускаем секции без текстового контента в <p>
+                if not section_content:
+                    continue # Пропускаем секции без текстового контента в <p>
 
                 # Сопоставление с ключами IMRAD (можно улучшить регулярными выражениями или более сложной логикой)
                 if 'introduction' in sec_title_text_raw or sec_node.get('sec-type') == 'intro':
@@ -668,9 +690,23 @@ def parse_references_from_jats(xml_string: str) -> list:
             if not jats_ref_id:
                 continue # Пропускаем ссылки без ID, их невозможно будет сопоставить с текстом
 
-            ref_data = {'jats_ref_id': jats_ref_id, 'doi': None, 'title': None, 'year': None, 'raw_text': None}
+            ref_data = {
+                'jats_ref_id': jats_ref_id,
+                'doi': None,
+                'title': None,
+                'year': None,
+                'raw_text': None,
+                'authors_str': None,
+                'journal_title': None,
+            }
 
-            citation_node = ref_node.find('./element-citation') or ref_node.find('./mixed-citation')
+            citation_node = ref_node.find('./element-citation')
+
+            if citation_node is None:
+                citation_node = ref_node.find('./mixed-citation')
+
+            if citation_node is None:
+                citation_node = ref_node.find('./citation')
 
             if citation_node is not None:
                 # Собираем полный текст цитаты из <mixed-citation> или формируем из <element-citation>
@@ -682,7 +718,9 @@ def parse_references_from_jats(xml_string: str) -> list:
                     ref_data['doi'] = doi_el.text.strip().lower()
 
                 # Извлекаем другие метаданные...
-                title_el = citation_node.find('./article-title') or citation_node.find('./chapter-title')
+                title_el = citation_node.find('./article-title')
+                if title_el is None:
+                    title_el = citation_node.find('./chapter-title')
                 if title_el is not None and title_el.text:
                     ref_data['title'] = "".join(title_el.itertext()).strip()
 
@@ -690,8 +728,86 @@ def parse_references_from_jats(xml_string: str) -> list:
                 if year_el is not None and year_el.text:
                     ref_data['year'] = year_el.text.strip()
 
+                source_el = citation_node.find('./source')
+                if source_el is not None:
+                    ref_data['journal_title'] = source_el.text.strip()
+
+                author_els = citation_node.findall('./string-name')
+                if author_els is None:
+                    author_els = citation_node.find('./person-group').findall('./name')
+                if author_els is not None:
+                    author_list = []
+                    for author in author_els:
+                        surname = None
+                        given_names = None
+                        full_name = ''
+                        surname = author.find('./surname')
+                        if surname is not None:
+                            full_name += f'{surname.text.strip()}'
+                        given_names = author.find('./given-names')
+                        if given_names is not None:
+                            full_name += f' {given_names.text.strip()}'
+                        if full_name:
+                            author_list.append(full_name)
+                    if author_list:
+                        ref_data['authors_str'] = ", ".join(author_list)
+
+                print(f'**** ref_data: {ref_data}')
             references.append(ref_data)
 
     except Exception as e:
         print(f"Error during JATS reference parsing: {e}")
     return references
+
+
+def get_pmc_pdf(pmc_pdf_url, identifier_value):
+    file_content = None
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                # user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:100.0) Gecko/20100101 Firefox/100.0', # Firefox User-Agent
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36', # Chrome User-Agent
+                java_script_enabled=True,
+                viewport={'width': 1920, 'height': 1080},
+                locale='en-US',
+                # color_scheme='light', # Можно попробовать 'dark' или 'light'
+                # timezone_id='America/New_York', # Для большей маскировки
+                permissions=['geolocation'], # Явно запрещаем геолокацию, если не нужна
+                # bypass_csp=True, # Использовать с ОСТОРОЖНОСТЬЮ, может нарушить работу сайта или быть обнаруженным
+                accept_downloads=True,
+            )
+            # Дополнительные заголовки, которые могут помочь
+            context.set_extra_http_headers({
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none", # или "cross-site", если переход с Unpaywall
+                "Sec-Fetch-User": "?1",
+                "Upgrade-Insecure-Requests": "1",
+                "DNT": "1", # Do Not Track
+            })
+
+            page = context.new_page()
+
+            # Ждём загрузку после перехода
+            with page.expect_download(timeout=60000) as download_info:
+                # page.goto(pubmed_pdf_url, wait_until='commit') # 'domcontentloaded'
+                page.goto(pmc_pdf_url, wait_until='load')
+                # page.wait_for_timeout(5000)
+            download = download_info.value
+
+            # file_content = download.read()
+            with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+                download.save_as(tmp_file.name)
+                tmp_file.seek(0)
+                file_content = tmp_file.read()
+
+            # page.wait_for_timeout(2000)
+            logger.info(f"Download PubMed PDF URL: {pmc_pdf_url} for identifier: {identifier_value}")
+            browser.close()
+            return file_content
+    except Exception as e:
+        logger.error(f"Error download PubMed PDF URL: {pmc_pdf_url} for identifier: {identifier_value}. Erro msg: {e}")
+        return file_content

@@ -1,4 +1,4 @@
-from django.shortcuts import render, redirect, get_object_or_404 # Добавили get_object_or_404
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from .models import Article, ArticleContent, ReferenceLink, AnalyzedSegment
 
@@ -43,14 +43,12 @@ def article_detail_page(request, pk):
     article = get_object_or_404(Article, pk=pk, user=request.user)
     contents = ArticleContent.objects.filter(article=article).order_by('source_api_name', 'format_type')
     references_made = ReferenceLink.objects.filter(source_article=article).select_related('resolved_article').order_by('id')
-    # Загружаем существующие анализируемые сегменты для этой статьи
     analyzed_segments = AnalyzedSegment.objects.filter(article=article).select_related('user').prefetch_related('cited_references__resolved_article').order_by('created_at')
-
     context = {
         'article': article,
         'contents': contents,
         'references_made': references_made,
-        'analyzed_segments': analyzed_segments, # Передаем сегменты в шаблон
+        'analyzed_segments': analyzed_segments,
         'user_id': request.user.id,
         'ref_status_choices': ReferenceLink.StatusChoices.choices,
     }

@@ -33,21 +33,47 @@ ALLOWED_HOSTS = []
 
 # Application definition
 
-INSTALLED_APPS = [
-    'daphne',
+# INSTALLED_APPS = [
+#     'daphne',
+#     'django.contrib.admin',
+#     'django.contrib.auth',
+#     'django.contrib.contenttypes',
+#     'django.contrib.sessions',
+#     'django.contrib.messages',
+#     'django.contrib.staticfiles',
+#     'rest_framework',
+#     'channels',
+#     'django_celery_results', # Для хранения результатов задач в БД
+#     'django_celery_beat',    # Для периодических задач
+#     'adminsortable2',
+#     'papers.apps.PapersConfig',
+# ]
+
+DJANGO_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+]
+
+THIRD_APPS = [
     'rest_framework',
     'channels',
     'django_celery_results', # Для хранения результатов задач в БД
     'django_celery_beat',    # Для периодических задач
     'adminsortable2',
+]
+
+CUSTOM_APPS = [
     'papers.apps.PapersConfig',
 ]
+
+INSTALLED_APPS = ['daphne'] + DJANGO_APPS + THIRD_APPS + CUSTOM_APPS + ['django_cleanup.apps.CleanupConfig']
+# django_cleanup should be placed last in INSTALLED_APPS.
+
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
