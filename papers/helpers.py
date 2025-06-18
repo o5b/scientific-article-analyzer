@@ -1,4 +1,4 @@
-from asgiref.sync import async_to_sync
+from asgiref.sync import sync_to_async, async_to_sync
 from channels.layers import get_channel_layer
 import xml.etree.ElementTree as ET # Для парсинга XML
 import re
@@ -42,7 +42,39 @@ def send_user_notification(user_id, task_id, identifier_value, status, message, 
     if analysis_data is not None:
         payload['analysis_data'] = analysis_data
 
+    # channel_layer.group_send(group_name, {"type": "send.notification", "payload": payload})
     async_to_sync(channel_layer.group_send)(group_name, {"type": "send.notification", "payload": payload})
+
+
+# # Синхронная версия send_user_notification для использования в Celery tasks
+# def sync_send_user_notification(user_id, task_id, identifier_value, status, message, progress_percent=None, article_id=None,
+#     created=None, source_api=None, originating_reference_link_id=None, analysis_data=None):
+
+#     if not user_id:
+#         return
+#     channel_layer = get_channel_layer()
+#     group_name = f"user_{user_id}_notifications"
+
+#     payload = {
+#         'task_id': task_id,
+#         'identifier': str(identifier_value), # Убедимся, что это строка
+#         'status': status,
+#         'message': message,
+#         'source_api': source_api or 'N/A'
+#     }
+#     # Добавляем опциональные поля в payload, только если они переданы
+#     if progress_percent is not None:
+#         payload['progress_percent'] = progress_percent
+#     if article_id is not None:
+#         payload['article_id'] = article_id
+#     if created is not None:
+#         payload['created'] = created
+#     if originating_reference_link_id is not None:
+#         payload['originating_reference_link_id'] = originating_reference_link_id
+#     if analysis_data is not None:
+#         payload['analysis_data'] = analysis_data
+
+#     channel_layer.group_send(group_name, {"type": "send.notification", "payload": payload})
 
 
 def parse_crossref_authors(authors_data):
@@ -752,7 +784,6 @@ def parse_references_from_jats(xml_string: str) -> list:
                     if author_list:
                         ref_data['authors_str'] = ", ".join(author_list)
 
-                print(f'**** ref_data: {ref_data}')
             references.append(ref_data)
 
     except Exception as e:
@@ -760,7 +791,7 @@ def parse_references_from_jats(xml_string: str) -> list:
     return references
 
 
-def get_pmc_pdf(pmc_pdf_url, identifier_value):
+def download_pdf_from_pmc(pmc_pdf_url, identifier_value):
     file_content = None
     try:
         with sync_playwright() as p:
@@ -811,3 +842,58 @@ def get_pmc_pdf(pmc_pdf_url, identifier_value):
     except Exception as e:
         logger.error(f"Error download PubMed PDF URL: {pmc_pdf_url} for identifier: {identifier_value}. Erro msg: {e}")
         return file_content
+
+
+def download_pdf(pdf_url: str, identifier_value: str) -> str | None:
+    file_content = None
+    try:
+        logger.info(f"*** Start Download PDF from URL: {pdf_url} for identifier: {identifier_value}")
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                # user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:100.0) Gecko/20100101 Firefox/100.0', # Firefox User-Agent
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36', # Chrome User-Agent
+                java_script_enabled=True,
+                viewport={'width': 1920, 'height': 1080},
+                locale='en-US',
+                # color_scheme='light', # Можно попробовать 'dark' или 'light'
+                # timezone_id='America/New_York', # Для большей маскировки
+                permissions=['geolocation'], # Явно запрещаем геолокацию, если не нужна
+                # bypass_csp=True, # Использовать с ОСТОРОЖНОСТЬЮ, может нарушить работу сайта или быть обнаруженным
+                accept_downloads=True,
+            )
+            # Дополнительные заголовки, которые могут помочь
+            context.set_extra_http_headers({
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none", # или "cross-site", если переход с Unpaywall
+                "Sec-Fetch-User": "?1",
+                "Upgrade-Insecure-Requests": "1",
+                "DNT": "1", # Do Not Track
+            })
+
+            page = context.new_page()
+
+            # Ждём загрузку после перехода
+            with page.expect_download(timeout=60000) as download_info:
+                # page.goto(pubmed_pdf_url, wait_until='commit') # 'domcontentloaded'
+                page.goto(pdf_url, wait_until='load')
+                # page.wait_for_timeout(5000)
+            download = download_info.value
+
+            # file_content = download.read()
+            with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+                download.save_as(tmp_file.name)
+                tmp_file.seek(0)
+                file_content = tmp_file.read()
+
+            # page.wait_for_timeout(2000)
+            logger.info(f"*** Download PDF from URL: {pdf_url} for identifier: {identifier_value}")
+            browser.close()
+            # return file_content
+    except Exception as e:
+        logger.error(f"*** Error download PDF from URL: {pdf_url} for identifier: {identifier_value}. \nErro msg: {e}")
+
+    return file_content

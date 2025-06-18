@@ -91,6 +91,7 @@ class ArticleAdmin(SortableAdminBase, admin.ModelAdmin):
         'reference_link_inline_count',
         'is_structured_content',
         'is_pdf_file',
+        'best_oa_pdf_url',
         'user',
         'primary_source_api',
         'publication_date',

@@ -32,7 +32,8 @@ from .helpers import (
     extract_structured_text_from_jats,
     # extract_structured_text_from_bioc,
     # sanitize_for_json_serialization,
-    get_pmc_pdf,
+    # get_pmc_pdf,
+    download_pdf,
 )
 
 
@@ -1608,7 +1609,7 @@ def fetch_data_from_pubmed_task(
             time.sleep(5)
             pdf_file_name = f"article_{api_pmcid}_{timezone.now().strftime('%Y%m%d%H%M%S')}.pdf"
             pmc_pdf_url = f'https://pmc.ncbi.nlm.nih.gov/articles/{api_pmcid}/pdf/'
-            pdf_to_save = get_pmc_pdf(pmc_pdf_url, identifier_value)
+            pdf_to_save = download_pdf(pmc_pdf_url, identifier_value)
             if pdf_to_save:
                 send_user_notification(user_id, task_id, query_display_name, 'INFO', 'PDF файл успешно получен из PMC.', source_api=current_api_name)
             else:

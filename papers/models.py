@@ -146,7 +146,6 @@ class Article(models.Model):
             # Если нет структурированного контента, используем абстракт (если есть) или оставляем пустым
             # self.cleaned_text_for_llm = self.abstract if self.abstract else ""
             return None
-
         # Если только 'title' и/или 'abstract' то не продолжаем
         structured_content_keys = list(self.structured_content.keys())
         for key in ['title', 'abstract']:
@@ -157,7 +156,6 @@ class Article(models.Model):
 
         ordered_keys = ['title', 'abstract', 'introduction', 'methods', 'results', 'discussion', 'conclusion']
         text_parts = []
-
         processed_keys = set()
 
         for key in ordered_keys:
