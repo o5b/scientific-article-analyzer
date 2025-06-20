@@ -698,6 +698,25 @@ def fetch_data_from_arxiv_task(
 
     send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', 'Данные arXiv получены, обработка...', progress_percent=40, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
 
+
+    api_pdf_link = None
+    for link_el in entry.findall('atom:link', ARXIV_NS):
+        if link_el.get('title') == 'pdf' and link_el.get('href'):
+            api_pdf_link = link_el.get('href')
+            break
+
+    if api_pdf_link:
+        send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Для: {arxiv_id_value} найден PDF URL: {api_pdf_link}. Начало получния PDF файла...', source_api=current_api_name)
+        try:
+            time.sleep(5)
+            pdf_to_save = download_pdf(api_pdf_link, arxiv_id_value)
+            if pdf_to_save:
+                send_user_notification(user_id, task_id, query_display_name, 'INFO', f'PDF файл для: {arxiv_id_value} успешно получен из: {api_pdf_link}.', source_api=current_api_name)
+            else:
+                send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Не удалось получить PDF файл для: {arxiv_id_value} из {api_pdf_link}.', source_api=current_api_name)
+        except Exception as exc:
+            send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Ошибка при запросе PDF файла для: {arxiv_id_value} из: {api_pdf_link}. \nError: {exc}', source_api=current_api_name)
+
     try:
         with transaction.atomic(): # Используем select_for_update ниже, поэтому транзакция нужна
             article_owner = None
@@ -724,11 +743,11 @@ def fetch_data_from_arxiv_task(
                     pass
             arxiv_doi_el = entry.find('arxiv:doi', ARXIV_NS)
             api_doi = arxiv_doi_el.text.strip().lower() if arxiv_doi_el is not None and arxiv_doi_el.text else None
-            api_pdf_link = None
-            for link_el in entry.findall('atom:link', ARXIV_NS):
-                if link_el.get('title') == 'pdf' and link_el.get('href'):
-                    api_pdf_link = link_el.get('href')
-                    break
+            # api_pdf_link = None
+            # for link_el in entry.findall('atom:link', ARXIV_NS):
+            #     if link_el.get('title') == 'pdf' and link_el.get('href'):
+            #         api_pdf_link = link_el.get('href')
+            #         break
             api_parsed_authors = parse_arxiv_authors(entry)
 
             # --- Логика поиска или создания статьи ---
@@ -812,6 +831,33 @@ def fetch_data_from_arxiv_task(
                     article=article, source_api_name=current_api_name, format_type='link_pdf',
                     defaults={'content': api_pdf_link}
                 )
+
+                if pdf_to_save and not article.pdf_file:
+                    extracted_markitdown_text = None
+                    try:
+                        pdf_file_name = f"article_{clean_arxiv_id}_{timezone.now().strftime('%Y%m%d%H%M%S')}.pdf"
+                        article.pdf_file.save(pdf_file_name, ContentFile(pdf_to_save), save=False)
+                        markitdown_service_url = 'http://localhost:8181/convert-document/'
+                        pdf_file_path = article.pdf_file.path
+                        if pdf_file_path:
+                            send_user_notification(user_id, task_id, query_display_name, 'INFO', f'MarkItDown: Начало конвертации: {api_pdf_link} PDF файла: {pdf_file_path} в текст...', source_api=current_api_name)
+                            with open(pdf_file_path, 'rb') as pdf_file_content_stream:
+                                files = {'file': (os.path.basename(pdf_file_path), pdf_file_content_stream, 'application/pdf')}
+                                time.sleep(1)
+                                response = requests.post(markitdown_service_url, files=files, timeout=310)
+                                response.raise_for_status()
+                                data = response.json()
+                                extracted_markitdown_text = data.get("markdown_text")
+                                # source_version_info = data.get("source_tool", "markitdown_service_1.0")
+                                if extracted_markitdown_text:
+                                    send_user_notification(user_id, task_id, query_display_name, 'SUCCESS', f'MarkItDown: {api_pdf_link} для PDF файла: {pdf_file_path} верунл текст длинной: {len(extracted_markitdown_text)}.', source_api=current_api_name)
+                                    article.pdf_text = extracted_markitdown_text
+                                else:
+                                    send_user_notification(user_id, task_id, query_display_name, 'INFO', f'MarkItDown: {api_pdf_link} для PDF файла: {pdf_file_path} не вернул текст. Ответ: {data}', source_api=current_api_name)
+                    except requests.exceptions.RequestException as exc:
+                        send_user_notification(user_id, task_id, query_display_name, 'RETRYING', f'MarkItDown: {api_pdf_link} для PDF файла: {pdf_file_path}. Ошибка Сети/API: {str(exc)}. Повтор...', source_api=current_api_name, riginating_reference_link_id=originating_reference_link_id)
+                    except Exception as err:
+                        send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'MarkItDown: {api_pdf_link} для PDF файла: {pdf_file_path}. Ошибка: {str(err)}.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
 
             article.save()
 
@@ -1189,6 +1235,20 @@ def fetch_data_from_s2_task(
 
     send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Данные {current_api_name} получены, обработка...', progress_percent=40, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
 
+    pdf_to_save = None
+    api_oa_pdf_url = api_data.get('openAccessPdf', {}).get('url') if isinstance(api_data.get('openAccessPdf'), dict) else None
+    # if api_oa_pdf_url:
+    #     send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Для: {identifier_value} найден PDF URL: {api_oa_pdf_url}. Начало получния PDF файла...', source_api=current_api_name)
+    #     try:
+    #         time.sleep(5)
+    #         pdf_to_save = download_pdf(api_oa_pdf_url, identifier_value)
+    #         if pdf_to_save:
+    #             send_user_notification(user_id, task_id, query_display_name, 'INFO', f'PDF файл для: {identifier_value} успешно получен из: {api_oa_pdf_url}.', source_api=current_api_name)
+    #         else:
+    #             send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Не удалось получить PDF файл для: {identifier_value} из {api_oa_pdf_url}.', source_api=current_api_name)
+    #     except Exception as exc:
+    #         send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Ошибка при запросе PDF файла для: {identifier_value} из: {api_oa_pdf_url}. \nError: {exc}', source_api=current_api_name)
+
     try:
         with transaction.atomic():
             article_owner = None
@@ -1229,7 +1289,7 @@ def fetch_data_from_s2_task(
             s2_tldr_data = api_data.get('tldr')
             api_tldr_text = s2_tldr_data.get('text') if isinstance(s2_tldr_data, dict) else None
 
-            api_oa_pdf_url = api_data.get('openAccessPdf', {}).get('url') if isinstance(api_data.get('openAccessPdf'), dict) else None
+            # api_oa_pdf_url = api_data.get('openAccessPdf', {}).get('url') if isinstance(api_data.get('openAccessPdf'), dict) else None
 
             # --- Логика поиска или создания статьи ---
             article = None
@@ -1343,6 +1403,33 @@ def fetch_data_from_s2_task(
             # OA PDF ссылка
             if api_oa_pdf_url and (not article.best_oa_pdf_url or can_fully_overwrite):
                 article.best_oa_pdf_url = api_oa_pdf_url
+
+                # if pdf_to_save and not article.pdf_file:
+                #     extracted_markitdown_text = None
+                #     try:
+                #         pdf_file_name = f"article_{identifier_value}_{timezone.now().strftime('%Y%m%d%H%M%S')}.pdf"
+                #         article.pdf_file.save(pdf_file_name, ContentFile(pdf_to_save), save=False)
+                #         markitdown_service_url = 'http://localhost:8181/convert-document/'
+                #         pdf_file_path = article.pdf_file.path
+                #         if pdf_file_path:
+                #             send_user_notification(user_id, task_id, query_display_name, 'INFO', f'MarkItDown: Начало конвертации: {identifier_value} PDF файла: {pdf_file_path} в текст...', source_api=current_api_name)
+                #             with open(pdf_file_path, 'rb') as pdf_file_content_stream:
+                #                 files = {'file': (os.path.basename(pdf_file_path), pdf_file_content_stream, 'application/pdf')}
+                #                 time.sleep(1)
+                #                 response = requests.post(markitdown_service_url, files=files, timeout=310)
+                #                 response.raise_for_status()
+                #                 data = response.json()
+                #                 extracted_markitdown_text = data.get("markdown_text")
+                #                 # source_version_info = data.get("source_tool", "markitdown_service_1.0")
+                #                 if extracted_markitdown_text:
+                #                     send_user_notification(user_id, task_id, query_display_name, 'SUCCESS', f'MarkItDown: {identifier_value} для PDF файла: {pdf_file_path} верунл текст длинной: {len(extracted_markitdown_text)}.', source_api=current_api_name)
+                #                     article.pdf_text = extracted_markitdown_text
+                #                 else:
+                #                     send_user_notification(user_id, task_id, query_display_name, 'INFO', f'MarkItDown: {identifier_value} для PDF файла: {pdf_file_path} не вернул текст. Ответ: {data}', source_api=current_api_name)
+                #     except requests.exceptions.RequestException as exc:
+                #         send_user_notification(user_id, task_id, query_display_name, 'RETRYING', f'MarkItDown: {identifier_value} для PDF файла: {pdf_file_path}. Ошибка Сети/API: {str(exc)}. Повтор...', source_api=current_api_name, riginating_reference_link_id=originating_reference_link_id)
+                #     except Exception as err:
+                #         send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'MarkItDown: {identifier_value} для PDF файла: {pdf_file_path}. Ошибка: {str(err)}.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
 
             article.save()
             send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Статья {current_api_name} сохранена в БД.', progress_percent=60, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
@@ -1833,11 +1920,11 @@ def fetch_data_from_pubmed_task(
                     article=article, source_api_name=current_api_name, format_type='mesh_terms',
                     defaults={'content': api_mesh_terms}
                 )
-            if extracted_markitdown_text:
-                ArticleContent.objects.update_or_create(
-                    article=article, source_api_name=current_api_name, format_type='pdf_markitdown_text',
-                    defaults={'content': extracted_markitdown_text}
-                )
+            # if extracted_markitdown_text:
+            #     ArticleContent.objects.update_or_create(
+            #         article=article, source_api_name=current_api_name, format_type='pdf_markitdown_text',
+            #         defaults={'content': extracted_markitdown_text}
+            #     )
 
             # обновление ReferenceLink, если originating_reference_link_id
             if originating_reference_link_id and article:
@@ -1960,6 +2047,27 @@ def fetch_data_from_rxiv_task(
     api_data = api_preprint_data_collection[0]
     send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Данные {current_api_name} ({actual_server_name}) получены, обработка...', progress_percent=40, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
 
+    # Пытаемся получить PDF файл
+    pdf_to_save = None
+    api_pdf_link = None
+    api_server_name_from_data = api_data.get('server', actual_server_name)
+    api_doi_from_rxiv = api_data.get('doi', clean_doi_for_query).lower() # Используем исходный DOI, если API его не вернул
+    version_str = api_data.get('version', '1')
+
+    if api_server_name_from_data and api_doi_from_rxiv:
+        api_pdf_link = f"https://{api_server_name_from_data}.org/content/{api_doi_from_rxiv}v{version_str}.full.pdf"
+        if api_pdf_link:
+            send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Для: {doi} найден PDF URL: {api_pdf_link}. Начало получния PDF файла...', source_api=current_api_name)
+            try:
+                time.sleep(5)
+                pdf_to_save = download_pdf(api_pdf_link, doi)
+                if pdf_to_save:
+                    send_user_notification(user_id, task_id, query_display_name, 'INFO', f'PDF файл для: {doi} успешно получен из: {api_pdf_link}.', source_api=current_api_name)
+                else:
+                    send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Не удалось получить PDF файл для: {doi} из {api_pdf_link}.', source_api=current_api_name)
+            except Exception as exc:
+                send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Ошибка при запросе PDF файла для: {doi} из: {api_pdf_link}. \nError: {exc}', source_api=current_api_name)
+
     try:
         with transaction.atomic():
             article_owner = None
@@ -1971,7 +2079,7 @@ def fetch_data_from_rxiv_task(
                     return {'status': 'error', 'message': f'User with ID {user_id} not found.'}
 
             # Извлечение данных из ответа API Rxiv
-            api_doi_from_rxiv = api_data.get('doi', clean_doi_for_query).lower() # Используем исходный DOI, если API его не вернул
+            # api_doi_from_rxiv = api_data.get('doi', clean_doi_for_query).lower() # Используем исходный DOI, если API его не вернул
             api_title = api_data.get('title')
             api_abstract = api_data.get('abstract')
             api_date_str = api_data.get('date') # Дата постинга
@@ -1982,7 +2090,7 @@ def fetch_data_from_rxiv_task(
                 except ValueError:
                     pass
 
-            api_server_name_from_data = api_data.get('server', actual_server_name)
+            # api_server_name_from_data = api_data.get('server', actual_server_name)
             api_category = api_data.get('category')
             api_journal_name_construct = f"{api_server_name_from_data.upper()} ({api_category or 'N/A'})" if api_server_name_from_data else None
 
@@ -2169,7 +2277,6 @@ def fetch_data_from_rxiv_task(
                         if processed_jats_ref_count > 0:
                             send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'RXIV JATS: Обработано {processed_jats_ref_count} ссылок.', source_api=current_api_name)
 
-
             # # Если полного текста нет, используем абстракт
             # elif api_abstract and (not article.cleaned_text_for_llm or len(api_abstract) > len(article.cleaned_text_for_llm or "")):
             #     article.cleaned_text_for_llm = api_abstract
@@ -2178,15 +2285,43 @@ def fetch_data_from_rxiv_task(
 
             # Ссылка на PDF
             # version_str = api_preprint_data.get('version', '1')
-            version_str = api_data.get('version', '1')
-            if api_server_name_from_data and api_doi_from_rxiv:
-                api_pdf_link = f"https://{api_server_name_from_data}.org/content/{api_doi_from_rxiv}v{version_str}.full.pdf"
-                if api_pdf_link and (not article.best_oa_pdf_url or can_fully_overwrite):
-                    article.best_oa_pdf_url = api_pdf_link
+
+            # version_str = api_data.get('version', '1')
+            # if api_server_name_from_data and api_doi_from_rxiv:
+            #     api_pdf_link = f"https://{api_server_name_from_data}.org/content/{api_doi_from_rxiv}v{version_str}.full.pdf"
+            if api_pdf_link and (not article.best_oa_pdf_url or can_fully_overwrite):
+                article.best_oa_pdf_url = api_pdf_link
                 ArticleContent.objects.update_or_create(
                     article=article, source_api_name=current_api_name, format_type='link_pdf',
                     defaults={'content': api_pdf_link}
                 )
+
+            if pdf_to_save and not article.pdf_file:
+                extracted_markitdown_text = None
+                try:
+                    pdf_file_name = f"article_{doi}_{timezone.now().strftime('%Y%m%d%H%M%S')}.pdf"
+                    article.pdf_file.save(pdf_file_name, ContentFile(pdf_to_save), save=False)
+                    markitdown_service_url = 'http://localhost:8181/convert-document/'
+                    pdf_file_path = article.pdf_file.path
+                    if pdf_file_path:
+                        send_user_notification(user_id, task_id, query_display_name, 'INFO', f'MarkItDown: Начало конвертации: {doi} PDF файла: {pdf_file_path} в текст...', source_api=current_api_name)
+                        with open(pdf_file_path, 'rb') as pdf_file_content_stream:
+                            files = {'file': (os.path.basename(pdf_file_path), pdf_file_content_stream, 'application/pdf')}
+                            time.sleep(1)
+                            response = requests.post(markitdown_service_url, files=files, timeout=310)
+                            response.raise_for_status()
+                            data = response.json()
+                            extracted_markitdown_text = data.get("markdown_text")
+                            # source_version_info = data.get("source_tool", "markitdown_service_1.0")
+                            if extracted_markitdown_text:
+                                send_user_notification(user_id, task_id, query_display_name, 'SUCCESS', f'MarkItDown: {doi} для PDF файла: {pdf_file_path} верунл текст длинной: {len(extracted_markitdown_text)}.', source_api=current_api_name)
+                                article.pdf_text = extracted_markitdown_text
+                            else:
+                                send_user_notification(user_id, task_id, query_display_name, 'INFO', f'MarkItDown: {doi} для PDF файла: {pdf_file_path} не вернул текст. Ответ: {data}', source_api=current_api_name)
+                except requests.exceptions.RequestException as exc:
+                    send_user_notification(user_id, task_id, query_display_name, 'RETRYING', f'MarkItDown: {doi} для PDF файла: {pdf_file_path}. Ошибка Сети/API: {str(exc)}. Повтор...', source_api=current_api_name, riginating_reference_link_id=originating_reference_link_id)
+                except Exception as err:
+                    send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'MarkItDown: {doi} для PDF файла: {pdf_file_path}. Ошибка: {str(err)}.', source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
 
             article.save()
             send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Препринт {current_api_name} сохранен.', progress_percent=80, source_api=current_api_name, originating_reference_link_id=originating_reference_link_id)
@@ -2292,13 +2427,15 @@ def fetch_data_from_unpaywall_task(
         article.oa_status = data['oa_status']
         updated_fields.append('oa_status')
 
+    api_pdf_link = None
     best_oa_location = data.get('best_oa_location')
     if isinstance(best_oa_location, dict):
         if best_oa_location.get('url'):
             article.best_oa_url = best_oa_location['url']
             updated_fields.append('best_oa_url')
         if best_oa_location.get('url_for_pdf'):
-            article.best_oa_pdf_url = best_oa_location['url_for_pdf']
+            api_pdf_link = best_oa_location['url_for_pdf']
+            article.best_oa_pdf_url = api_pdf_link
             updated_fields.append('best_oa_pdf_url')
         if best_oa_location.get('license'):
             article.oa_license = best_oa_location['license']
@@ -2315,6 +2452,48 @@ def fetch_data_from_unpaywall_task(
     if updated_fields:
         updated_fields.append('updated_at') # Всегда обновляем updated_at
         article.save(update_fields=updated_fields)
+
+    # # Пытаемся получить PDF файл
+    # pdf_to_save = None
+    # if api_pdf_link:
+    #     send_user_notification(user_id, task_id, query_display_name, 'PROGRESS', f'Для: {doi} найден PDF URL: {api_pdf_link}. Начало получния PDF файла...', source_api=settings.API_SOURCE_NAMES['UNPAYWALL'])
+    #     try:
+    #         time.sleep(5)
+    #         pdf_to_save = download_pdf(api_pdf_link, doi)
+    #         if pdf_to_save:
+    #             send_user_notification(user_id, task_id, query_display_name, 'INFO', f'PDF файл для: {doi} успешно получен из: {api_pdf_link}.', source_api=settings.API_SOURCE_NAMES['UNPAYWALL'])
+    #         else:
+    #             send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Не удалось получить PDF файл для: {doi} из {api_pdf_link}.', source_api=settings.API_SOURCE_NAMES['UNPAYWALL'])
+    #     except Exception as exc:
+    #         send_user_notification(user_id, task_id, query_display_name, 'WARNING', f'Ошибка при запросе PDF файла для: {doi} из: {api_pdf_link}. \nError: {exc}', source_api=settings.API_SOURCE_NAMES['UNPAYWALL'])
+
+    # if pdf_to_save and not article.pdf_file:
+    #     extracted_markitdown_text = None
+    #     try:
+    #         pdf_file_name = f"article_{doi}_{timezone.now().strftime('%Y%m%d%H%M%S')}.pdf"
+    #         article.pdf_file.save(pdf_file_name, ContentFile(pdf_to_save), save=False)
+    #         markitdown_service_url = 'http://localhost:8181/convert-document/'
+    #         pdf_file_path = article.pdf_file.path
+    #         if pdf_file_path:
+    #             send_user_notification(user_id, task_id, query_display_name, 'INFO', f'MarkItDown: Начало конвертации: {doi} PDF файла: {pdf_file_path} в текст...', source_api=settings.API_SOURCE_NAMES['UNPAYWALL'])
+    #             with open(pdf_file_path, 'rb') as pdf_file_content_stream:
+    #                 files = {'file': (os.path.basename(pdf_file_path), pdf_file_content_stream, 'application/pdf')}
+    #                 time.sleep(1)
+    #                 response = requests.post(markitdown_service_url, files=files, timeout=310)
+    #                 response.raise_for_status()
+    #                 data = response.json()
+    #                 extracted_markitdown_text = data.get("markdown_text")
+    #                 # source_version_info = data.get("source_tool", "markitdown_service_1.0")
+    #                 if extracted_markitdown_text:
+    #                     send_user_notification(user_id, task_id, query_display_name, 'SUCCESS', f'MarkItDown: {doi} для PDF файла: {pdf_file_path} верунл текст длинной: {len(extracted_markitdown_text)}.', source_api=settings.API_SOURCE_NAMES['UNPAYWALL'])
+    #                     article.pdf_text = extracted_markitdown_text
+    #                     article.save()
+    #                 else:
+    #                     send_user_notification(user_id, task_id, query_display_name, 'INFO', f'MarkItDown: {doi} для PDF файла: {pdf_file_path} не вернул текст. Ответ: {data}', source_api=settings.API_SOURCE_NAMES['UNPAYWALL'])
+    #     except requests.exceptions.RequestException as exc:
+    #         send_user_notification(user_id, task_id, query_display_name, 'RETRYING', f'MarkItDown: {doi} для PDF файла: {pdf_file_path}. Ошибка Сети/API: {str(exc)}. Повтор...', source_api=settings.API_SOURCE_NAMES['UNPAYWALL'])
+    #     except Exception as err:
+    #         send_user_notification(user_id, task_id, query_display_name, 'FAILURE', f'MarkItDown: {doi} для PDF файла: {pdf_file_path}. Ошибка: {str(err)}.', source_api=settings.API_SOURCE_NAMES['UNPAYWALL'])
 
     send_user_notification(user_id, task_id, doi, 'SUCCESS', f'OA-статус для DOI {doi}: {article.oa_status}.', progress_percent=100, article_id=article.id, source_api=settings.API_SOURCE_NAMES['UNPAYWALL'])
     return {'status': 'success', 'message': f'OA status processed: {article.oa_status}', 'doi': doi, 'article_id': article.id}

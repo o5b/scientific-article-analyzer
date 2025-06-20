@@ -2,6 +2,7 @@ from asgiref.sync import sync_to_async, async_to_sync
 from channels.layers import get_channel_layer
 import xml.etree.ElementTree as ET # Для парсинга XML
 import re
+import requests
 import tempfile
 import logging
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
@@ -395,105 +396,6 @@ def extract_structured_text_from_jats(xml_string: str) -> dict:
     return {} # Возвращаем пустой словарь в случае ошибки
 
 
-# def extract_text_from_bioc_json(bioc_data) -> str:
-#     if not bioc_data or not isinstance(bioc_data, list) or not bioc_data[0].get('documents'):
-#         return ""
-
-#     all_text_parts = []
-#     document = bioc_data[0]['documents'][0]
-
-#     # Заголовок статьи (обычно первый TITLE)
-#     title_found = False
-#     for passage in document.get('passages', []):
-#         passage_infons = passage.get('infons', {})
-#         passage_text = passage.get('text', "").strip()
-#         if passage_infons.get('section_type', '').upper() == 'TITLE' and passage_text and not title_found:
-#             all_text_parts.append(f"--- TITLE ---\n{passage_text}\n")
-#             title_found = True # Берем только первый основной заголовок
-#             break
-#             # Или, если есть 'type': 'title', можно его использовать
-
-#     # Абстракт
-#     abstract_texts = []
-#     for passage in document.get('passages', []):
-#         passage_infons = passage.get('infons', {})
-#         passage_text = passage.get('text', "").strip()
-#         passage_section_type = passage_infons.get('section_type', '').upper()
-
-#         if passage_section_type == 'ABSTRACT' and passage_text:
-#             # Избегаем печати самого слова "Abstract" если оно идет как отдельный passage с типом заголовка
-#             if not (passage_infons.get('type', '').lower().endswith('title') and len(passage_text.split()) < 3 and passage_text.lower() == 'abstract'):
-#                 abstract_texts.append(passage_text)
-
-#     if abstract_texts:
-#         all_text_parts.append(f"\n--- ABSTRACT ---\n" + "\n\n".join(abstract_texts) + "\n") # Разделяем параграфы абстракта двойным переводом строки
-
-#     # Основные секции
-#     # Список желаемых секций и их возможные представления в BioC `section_type`
-#     # (может потребоваться адаптация на основе реальных данных)
-#     section_map = {
-#         'INTRO': 'INTRODUCTION',
-#         'METHODS': 'METHODS', # или 'MATERIAL AND METHODS', 'METHODOLOGY'
-#         'RESULTS': 'RESULTS',
-#         'DISCUSS': 'DISCUSSION', # или 'DISCUSSION AND CONCLUSION'
-#         'CONCL': 'CONCLUSION',   # или 'CONCLUSIONS'
-#         'CASE': 'CASE REPORT', # или 'CASE PRESENTATION'
-#         # Другие возможные секции
-#         'BACKGROUND': 'BACKGROUND',
-#         'OBJECTIVE': 'OBJECTIVE',
-#         'SECTION': 'SECTION' # Общий тип секции, если другие не подошли
-#     }
-#     # Секции, которые мы обычно хотим пропустить
-#     excluded_section_types_bioc = ['REF', 'FIG', 'TABLE', 'APPENDIX', 'COMP_INT', 'AUTH_CONT', 'ACK_FUND']
-
-
-#     current_section_name_for_texts = None
-#     temp_section_texts = []
-
-#     for passage in document.get('passages', []):
-#         passage_infons = passage.get('infons', {})
-#         passage_text = passage.get('text', "").strip()
-#         passage_section_type_raw = passage_infons.get('section_type', '').upper()
-#         passage_content_type = passage_infons.get('type', '').lower()
-
-#         if not passage_text or passage_section_type_raw in excluded_section_types_bioc:
-#             continue # Пропускаем пустые или ненужные секции
-
-#         # Определяем, является ли текущий passage заголовком секции
-#         is_title = 'title' in passage_content_type and len(passage_text.split()) < 15 # Эвристика
-
-#         # Если это заголовок новой релевантной секции
-#         if is_title and passage_section_type_raw in section_map:
-#             if temp_section_texts: # Сохраняем текст предыдущей секции
-#                 all_text_parts.append("\n".join(temp_section_texts) + "\n")
-#                 temp_section_texts = []
-
-#             current_section_name_for_texts = section_map[passage_section_type_raw]
-#             all_text_parts.append(f"\n--- {passage_text.upper()} ---\n") # Используем текст из заголовка
-#         elif passage_section_type_raw in section_map or \
-#              (current_section_name_for_texts and passage_section_type_raw == 'UNKNOWN'): # UNKNOWN может быть параграфом в текущей секции
-#             # Если это параграф текущей или новой релевантной секции
-#             if not current_section_name_for_texts and passage_section_type_raw in section_map : # Первый параграф новой секции без явного заголовка
-#                  current_section_name_for_texts = section_map[passage_section_type_raw]
-#                  all_text_parts.append(f"\n--- {current_section_name_for_texts} ---\n")
-#             temp_section_texts.append(passage_text)
-#         elif not is_title and passage_section_type_raw not in ['TITLE', 'ABSTRACT']: # Текст без явного типа секции, но не заголовок/абстракт
-#              # Если предыдущая секция была определена, добавляем к ней
-#              if current_section_name_for_texts:
-#                  temp_section_texts.append(passage_text)
-#              else: # Иначе добавляем как есть, возможно, это часть введения или другого блока
-#                  all_text_parts.append(passage_text + "\n")
-
-
-#     if temp_section_texts: # Добавляем остатки текста из последней обработанной секции
-#         all_text_parts.append("\n".join(temp_section_texts) + "\n")
-
-
-#     final_text = "".join(all_text_parts)
-#     final_text = "\n".join([line.strip() for line in final_text.splitlines() if line.strip()])
-#     return final_text.strip()
-
-
 # def extract_structured_text_from_bioc(bioc_data: list) -> dict:
 #     """
 #     Извлекает текст из BioC JSON, структурируя его по основным научным секциям.
@@ -791,109 +693,79 @@ def parse_references_from_jats(xml_string: str) -> list:
     return references
 
 
-def download_pdf_from_pmc(pmc_pdf_url, identifier_value):
-    file_content = None
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(
-                # user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:100.0) Gecko/20100101 Firefox/100.0', # Firefox User-Agent
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36', # Chrome User-Agent
-                java_script_enabled=True,
-                viewport={'width': 1920, 'height': 1080},
-                locale='en-US',
-                # color_scheme='light', # Можно попробовать 'dark' или 'light'
-                # timezone_id='America/New_York', # Для большей маскировки
-                permissions=['geolocation'], # Явно запрещаем геолокацию, если не нужна
-                # bypass_csp=True, # Использовать с ОСТОРОЖНОСТЬЮ, может нарушить работу сайта или быть обнаруженным
-                accept_downloads=True,
-            )
-            # Дополнительные заголовки, которые могут помочь
-            context.set_extra_http_headers({
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Sec-Fetch-Dest": "document",
-                "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "none", # или "cross-site", если переход с Unpaywall
-                "Sec-Fetch-User": "?1",
-                "Upgrade-Insecure-Requests": "1",
-                "DNT": "1", # Do Not Track
-            })
-
-            page = context.new_page()
-
-            # Ждём загрузку после перехода
-            with page.expect_download(timeout=60000) as download_info:
-                # page.goto(pubmed_pdf_url, wait_until='commit') # 'domcontentloaded'
-                page.goto(pmc_pdf_url, wait_until='load')
-                # page.wait_for_timeout(5000)
-            download = download_info.value
-
-            # file_content = download.read()
-            with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-                download.save_as(tmp_file.name)
-                tmp_file.seek(0)
-                file_content = tmp_file.read()
-
-            # page.wait_for_timeout(2000)
-            logger.info(f"Download PubMed PDF URL: {pmc_pdf_url} for identifier: {identifier_value}")
-            browser.close()
-            return file_content
-    except Exception as e:
-        logger.error(f"Error download PubMed PDF URL: {pmc_pdf_url} for identifier: {identifier_value}. Erro msg: {e}")
-        return file_content
-
-
 def download_pdf(pdf_url: str, identifier_value: str) -> str | None:
     file_content = None
+    content_type = None
+    response = None
+    logger.info(f"*** Start Download PDF from URL: {pdf_url} for identifier: {identifier_value}")
+
     try:
-        logger.info(f"*** Start Download PDF from URL: {pdf_url} for identifier: {identifier_value}")
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(
-                # user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:100.0) Gecko/20100101 Firefox/100.0', # Firefox User-Agent
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36', # Chrome User-Agent
-                java_script_enabled=True,
-                viewport={'width': 1920, 'height': 1080},
-                locale='en-US',
-                # color_scheme='light', # Можно попробовать 'dark' или 'light'
-                # timezone_id='America/New_York', # Для большей маскировки
-                permissions=['geolocation'], # Явно запрещаем геолокацию, если не нужна
-                # bypass_csp=True, # Использовать с ОСТОРОЖНОСТЬЮ, может нарушить работу сайта или быть обнаруженным
-                accept_downloads=True,
-            )
-            # Дополнительные заголовки, которые могут помочь
-            context.set_extra_http_headers({
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Sec-Fetch-Dest": "document",
-                "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "none", # или "cross-site", если переход с Unpaywall
-                "Sec-Fetch-User": "?1",
-                "Upgrade-Insecure-Requests": "1",
-                "DNT": "1", # Do Not Track
-            })
-
-            page = context.new_page()
-
-            # Ждём загрузку после перехода
-            with page.expect_download(timeout=60000) as download_info:
-                # page.goto(pubmed_pdf_url, wait_until='commit') # 'domcontentloaded'
-                page.goto(pdf_url, wait_until='load')
-                # page.wait_for_timeout(5000)
-            download = download_info.value
-
-            # file_content = download.read()
-            with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-                download.save_as(tmp_file.name)
-                tmp_file.seek(0)
-                file_content = tmp_file.read()
-
-            # page.wait_for_timeout(2000)
-            logger.info(f"*** Download PDF from URL: {pdf_url} for identifier: {identifier_value}")
-            browser.close()
-            # return file_content
+        headers = {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36",
+            "Accept": "application/pdf,text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "DNT": "1",
+            "Upgrade-Insecure-Requests": "1"
+        }
+        response = requests.get(pdf_url, timeout=60, headers=headers, stream=True, allow_redirects=True) # разрешены редиректы
+        print(f'****** response: {response}')
+        if response.status_code == 200:
+            content_type = response.headers.get('content-type', '').lower()
+            print(f'****** content_type: {content_type}')
+            if 'application/pdf' in content_type:
+                file_content = response.content
+                logger.info(f"*** (REQUESTS) Download PDF from URL: {pdf_url} for identifier: {identifier_value}")
+                # print(f'****** (REQUESTS) file_content: {file_content}')
     except Exception as e:
-        logger.error(f"*** Error download PDF from URL: {pdf_url} for identifier: {identifier_value}. \nErro msg: {e}")
+        logger.error(f"*** (REQUESTS) Error download PDF from URL: {pdf_url} for identifier: {identifier_value} \nErro msg: {e}")
+
+    if not file_content:
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context(
+                    # user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:100.0) Gecko/20100101 Firefox/100.0', # Firefox User-Agent
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36', # Chrome User-Agent
+                    java_script_enabled=True,
+                    viewport={'width': 1920, 'height': 1080},
+                    locale='en-US',
+                    # color_scheme='light', # Можно попробовать 'dark' или 'light'
+                    # timezone_id='America/New_York', # Для большей маскировки
+                    permissions=['geolocation'], # Явно запрещаем геолокацию, если не нужна
+                    # bypass_csp=True, # Использовать с ОСТОРОЖНОСТЬЮ, может нарушить работу сайта или быть обнаруженным
+                    accept_downloads=True,
+                )
+                # Дополнительные заголовки, которые могут помочь
+                context.set_extra_http_headers({
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Sec-Fetch-Dest": "document",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Site": "none", # или "cross-site", если переход с Unpaywall
+                    "Sec-Fetch-User": "?1",
+                    "Upgrade-Insecure-Requests": "1",
+                    "DNT": "1", # Do Not Track
+                })
+
+                page = context.new_page()
+
+                # Ждём загрузку после перехода
+                with page.expect_download(timeout=60000) as download_info:
+                    # page.goto(pubmed_pdf_url, wait_until='commit') # 'domcontentloaded'
+                    page.goto(pdf_url, wait_until='load')
+                    # page.wait_for_timeout(5000)
+                download = download_info.value
+
+                # file_content = download.read()
+                with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+                    download.save_as(tmp_file.name)
+                    tmp_file.seek(0)
+                    file_content = tmp_file.read()
+
+                # page.wait_for_timeout(2000)
+                logger.info(f"*** (PLAYWRIGHT) Download PDF from URL: {pdf_url} for identifier: {identifier_value}")
+                browser.close()
+        except Exception as e:
+            logger.error(f"*** (PLAYWRIGHT) Error download PDF from URL: {pdf_url} for identifier: {identifier_value} \nErro msg: {e}")
 
     return file_content
